@@ -1,10 +1,9 @@
 # Paquets inicials
-imageio 
-pywin32 
-h5py 
-pandas 
-scipy 
-numpy 
-matplotlib 
-pybaselines 
-tkinter
+imageio>=2.37
+pywin32>=311
+h5py>=3.14
+pandas>=2.3
+scipy>=1.16
+numpy>=2.3,<3.0
+matplotlib>=3.10,<4.0
+pybaselines>=1.2
