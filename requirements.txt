@@ -1,0 +1,10 @@
+# Paquets inicials
+imageio 
+pywin32 
+h5py 
+pandas 
+scipy 
+numpy 
+matplotlib 
+pybaselines 
+tkinter
