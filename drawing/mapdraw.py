@@ -117,7 +117,7 @@ class Escala:
         self.text = ax.text(xtext, ytext, self.set_text(num), ha='center', fontname='Arial', weight='bold')
         self.color = 'w'
         
-    def set_text(self, num, units = '$\mu$m', nsign = 2):
+    def set_text(self, num, units = r'$\mu$m', nsign = 2):
         if num <= 0.5: 
             units = 'nm'
             if num <= 0.1: nsign = 1
