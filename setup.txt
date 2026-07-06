@@ -1,0 +1,17 @@
+@echo off
+echo ====================================
+echo   CREANT ENTORN PROJECTE PYTHON 3.12
+echo ====================================
+
+py -3.14 -m venv .venv
+
+.venv\Scripts\activate
+
+python -m pip install --upgrade pip
+
+echo Instal·lant dependències...
+pip install -r requirements.txt
+
+echo.
+echo ✔ ENTORN CREAT CORRECTAMENT
+pause

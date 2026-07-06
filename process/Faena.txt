@@ -1,0 +1,8 @@
+
+basics: -
+flatten: -
+movezoom: -
+perfil: -
+shiftphase: -
+statistics: -
+smooth: - Revisar savitsky_golay_piecewise amb ChatGPT.

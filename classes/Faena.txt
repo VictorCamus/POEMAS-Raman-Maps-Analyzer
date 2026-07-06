@@ -1,0 +1,2 @@
+diccionaris: - Veure si es poden simplificar coses, com llegir automàticament les mides i les unitats.
+filechannel: -

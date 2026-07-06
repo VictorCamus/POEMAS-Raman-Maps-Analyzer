@@ -1,5 +1,0 @@
-adapters: -
-aist: -
-h5: -
-wsxm: - Afegir opció d'obrir sessió WSxM.
-xyz: -
