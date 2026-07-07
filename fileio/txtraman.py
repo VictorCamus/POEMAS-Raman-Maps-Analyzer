@@ -1,5 +1,5 @@
 from numpy import genfromtxt, unique
-from process.basics import raman_to_nm, raman_to_eV, nm_to_raman, nm_to_eV
+from process.basics import raman_to_nm, raman_to_eV, nm_to_raman, nm_to_eV, eV_to_raman, eV_to_nm
 
 def load(file_list):
     file = file_list[0]
@@ -29,11 +29,16 @@ def load(file_list):
             xdata['nm'] = q
             xdata['eV'] = nm_to_eV(q)
             xdata['1/cm'] = nm_to_raman(q, laser)
-            
+
+        case 'eV':
+            xdata['nm'] = eV_to_nm(q)
+            xdata['eV'] = q
+            xdata['1/cm'] = eV_to_raman(q, laser)
+
         case '1/cm':
             xdata['nm'] = raman_to_nm(q, laser)
             xdata['eV'] = raman_to_eV(q, laser)
             xdata['1/cm'] = q
-    
+
     return xdata, spectra, mida, dims, laser, units
     
