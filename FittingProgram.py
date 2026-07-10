@@ -113,15 +113,16 @@ def write_init_params(ruta, fit):
 
 def fit_function(file, fits, fonsSplineGlobal=False):
     print(f'Obrint {file.stem}')
-    xdata, ydata, _, dims, _, units = open_file([file], file.suffix)
-    N = dims[0]*dims[1]
+    xdata, spectra, N, _, _, units = open_file([file], file.suffix)
+    Nx, Ny = N
+    Ntotal = Nx*Ny
 
     if fonsSplineGlobal:
         baseline_fitter = Baseline(x_data=xdata[units])
         bkgMatrix = []
-        for i, intensity in enumerate(ydata):
-            bkg, params = baseline_fitter.mixture_model(intensity)
-            y = i // dims[1] + 1; x = i % dims[1] + 1
+        for i, ydata in enumerate(spectra):
+            bkg, params = baseline_fitter.mixture_model(ydata)
+            y = i // Nx + 1; x = i % Nx + 1
             bkgMatrix.append([x, y, *bkg])
 
     for fit in fits:
@@ -138,14 +139,14 @@ def fit_function(file, fits, fonsSplineGlobal=False):
         fit_files = {peak: write_header(f'{ruta}_{peak}', Info(fit.nom, peak, func, fit.units, fit.rang[0], fit.rang[1]))
                      for peak, func in zip(fit.PeakNames, fit.PeakFuncs)}
 
-        for i, yfit in enumerate(ydata):
-            if i%100 == 0: print(f"Ajustant espectre {i+1}/{N}...\n")
-            if fonsSplineGlobal: yfit -= bkgMatrix[i][2:]
+        for i, ydata in enumerate(spectra):
+            if i%100 == 0: print(f"Ajustant espectre {i+1}/{Ntotal}...\n")
+            if fonsSplineGlobal: ydata -= bkgMatrix[i][2:]
 
-            yfit, canviat = spike_removal(yfit)
-            yfit = yfit[IdxInf:IdxSup]
+            ydata, canviat = spike_removal(ydata)
+            yfit = ydata[IdxInf:IdxSup]
 
-            iy = i // dims[1] + 1; ix = i % dims[1] + 1
+            iy = i // Nx + 1; ix = i % Nx + 1
             if ix == 1: params_actuals = fit.params.copy()
 
             if np.sum(yfit) <= fit.threshold: success = False

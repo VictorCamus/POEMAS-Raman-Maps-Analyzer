@@ -7,7 +7,7 @@ import scipy.optimize as scopt
 import tkinter as tk
 from pathlib import Path
 import tkinter.ttk as ttk
-
+from pandas import read_table
 from classes.peaks import Pic, Fons
 from drawing import mapdraw as mapa
 from classes.filechannel import InteraccioFigura
@@ -367,8 +367,8 @@ class PintaMapesInterficie:
         self._active_timer_id = self.root.after(100, self.zoom._resize())
         
     def event_to_pixel(self, event):
-        x_pixel = math.floor(self.dims[0]/self.mida[1]*event.xdata) + 1
-        y_pixel = math.floor(self.dims[1]/self.mida[0]*event.ydata) + 1
+        x_pixel = math.floor(self.N[0] / self.mida[0] * event.xdata) + 1
+        y_pixel = math.floor(self.N[1] / self.mida[1] * event.ydata) + 1
         return x_pixel, y_pixel
     
     def change_map(self, value):
@@ -379,8 +379,10 @@ class PintaMapesInterficie:
         self.plt_map()
 
     def new_file(self):
-        xdata, self.spectra, self.mida, self.dims, self.laser, _ = open_file([self.file], self.format)
-        self.IntInt = np.sum(self.spectra, axis=1).reshape(*self.dims)
+        xdata, self.spectra, self.N, self.mida, self.laser, _ = open_file([self.file], self.format)
+        Nx, Ny = self.N
+
+        self.IntInt = np.nansum(self.spectra, axis=1).reshape(Ny, Nx)
         self.Z = self.IntInt.copy()
         self.limInf, self.limSup = lims_outliers(self.Z)
         self.object['laser'].value.set(self.laser)
@@ -391,6 +393,7 @@ class PintaMapesInterficie:
         
         if not Path(self.folder).exists() or next(Path(self.folder).glob("*.txt")) is StopIteration: return
 
+        print('Passa')
         self.fits = {}
         for file in sorted(Path(self.folder).glob("*.txt")):
             if file.name.endswith("_params.txt"): continue
@@ -416,19 +419,19 @@ class PintaMapesInterficie:
 
             if header['Pic'] == 'bkg':
                 nvars = dades.shape[1]
-                varbls = np.array(dades[:, 2:2+int((nvars-2)/2)].reshape(*self.dims))
+                varbls = np.array(dades[:, 2:2+int((nvars-2)/2)].reshape(Ny, Nx))
                 bkgclass = Fons(header['Pic'], units, header['Funció'], varbls, xfit = xfit, color = 'tab:blue')
-                result = [np.sum(bkgclass.data([i, j])) for i in range(self.dims[0]) for j in range(self.dims[1])]
-                bkgclass.Intensity = np.array(result).reshape(*self.dims)
+                result = [np.sum(bkgclass.data([i, j])) for i in range(Ny) for j in range(Nx)]
+                bkgclass.Intensity = np.array(result).reshape(Ny, Nx)
                 self.fits[header['Nom']]['bkg'] = bkgclass
                 
                 self.object['spec_type'].value.set(units)
                 self.spec_type = units
                 continue
 
-            centers = dades[:, 2].reshape(*self.dims)
-            FWHM = dades[:, 3].reshape(*self.dims)
-            Int = dades[:, 4].reshape(*self.dims)
+            centers = dades[:, 2].reshape(Ny, Nx)
+            FWHM = dades[:, 3].reshape(Ny, Nx)
+            Int = dades[:, 4].reshape(Ny, Nx)
             IntNorm = Int / self.IntInt
 
             peak = Pic(header['Pic'], units, header["Funció"], centers, FWHM, Int, IntNorm, xfit = xfit, color = colorsT[len(self.fits[header['Nom']])])
@@ -468,10 +471,10 @@ class PintaMapesInterficie:
                 self.object[key].value.set('')
     
     def limit_pixels(self):
-        x0 = int(self.zoom.xlims[0]/self.mida[0]*self.dims[1])
-        x1 = int(self.zoom.xlims[1]/self.mida[0]*self.dims[1])
-        y0 = int(self.zoom.ylims[0]/self.mida[1]*self.dims[0])
-        y1 = int(self.zoom.ylims[1]/self.mida[1]*self.dims[0])
+        x0 = int(self.zoom.xlims[0] / self.mida[0] * self.N[0])
+        x1 = int(self.zoom.xlims[1] / self.mida[0] * self.N[0])
+        y0 = int(self.zoom.ylims[0] / self.mida[1] * self.N[1])
+        y1 = int(self.zoom.ylims[1] / self.mida[1] * self.N[1])
         return x0, x1, y0, y1
     
     def plt_map(self, event = None, attr = None):
@@ -538,7 +541,7 @@ class PintaMapesInterficie:
                     if type(magnitud.operacio) is dict:
                         xdata = self.specs["nm"].xdata
                         idxInf, idxSup = find_nearest(xdata, magnitud.operacio["Range"])
-                        magnitud.Intensity = np.array([np.sum(spec[idxInf:idxSup]) for spec in self.spectra]).reshape(*self.dims)
+                        magnitud.Intensity = np.array([np.sum(spec[idxInf:idxSup]) for spec in self.spectra]).reshape(*self.N[::-1])
                         magnitud.magnituds=["Area"]
                     else:
                         magnitud.Intensity = magnitud.operacio(*magsCombination)
@@ -617,7 +620,7 @@ class PintaMapesInterficie:
         self.ax[1].clear()
         self.etiquette = {}
         pos = self.posy - 1, self.posx - 1
-        idx = pos[1] + pos[0] * self.dims[1]
+        idx = pos[1] + pos[0] * self.N[0]
         self.I = self.spectra[idx,:].copy()
         spec = self.specs[self.spec_type]
 
@@ -665,7 +668,7 @@ class PintaMapesInterficie:
                 for element in VectorExtraMags[self.nommap].pics:
                     self.etiquette[element] = plot_peak(xdata, self.ax[1], fit[element], bkgdata, pos)
         
-        self.dades, = self.ax[1].plot(spec.xdata, self.I, zorder=0)
+        self.dades, = self.ax[1].plot(spec.xdata, self.I, color = 'r', zorder=0)
         self.dades.set_visible(self.object['spec_data'].value.get())
         for element in self.etiquette.values(): element.set_visible(self.object['spec_etiq'].value.get())
         
