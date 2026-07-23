@@ -1,4 +1,3 @@
-
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from tkinter import Frame
 from drawing import mapdraw as map
@@ -120,7 +119,7 @@ class BaseMapWindow(BaseWindow):
         ch = self.channel
         self.lims = ch.lims
         self.z = ch.Z
-        self.figure, self.axis, self.image, self.cbar = map.create_map(ch.color.cmap, ch.Z,self.lims, ch.dades.units, self.file.midaBase, ch.color.lims)
+        self.figure, self.axis, self.image, self.cbar = map.create_map(ch.color.cmap, ch.Z,self.lims, ch.units, self.file.midaBase, ch.color.lims)
         w, h = self.figure.get_size_inches()   # mida actual
 
         factor = 0.8
@@ -161,7 +160,7 @@ class BaseMapWindow(BaseWindow):
         self.cbar.limInf.set_color(ch.color.limInf)
         self.cbar.limSup.set_color(ch.color.limSup)
 
-        map.update_map(self.image, ch.tipus, ch.Z, ch.lims, ch.dades.units, mida = self.file.midaBase, colLims = ch.color.lims, cbar = self.cbar)
+        map.update_map(self.image, ch.color.cmap, ch.Z, ch.lims, ch.units, mida = self.file.midaBase, colLims = ch.color.lims, cbar = self.cbar)
         self.escala.color = ch.color.scale
         self.image.set_clim(ch.lims)
         self.canvas.draw_idle()
@@ -171,8 +170,8 @@ class BaseMapWindow(BaseWindow):
         self.image.set_clim(*self.lims)
         self.image.set_clim(*self.lims)
         
-        self.cbar.limInf.set_text(f'{self.lims[0]} {ch.dades.units}')
-        self.cbar.limSup.set_text(f'{self.lims[1]} {ch.dades.units}')
+        self.cbar.limInf.set_text(f'{self.lims[0]} {ch.units}')
+        self.cbar.limSup.set_text(f'{self.lims[1]} {ch.units}')
         self.canvas.draw_idle() 
         
     def aplicar(self, value):

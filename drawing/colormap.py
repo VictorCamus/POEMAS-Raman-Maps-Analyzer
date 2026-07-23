@@ -10,21 +10,22 @@ N=255
 hot = cm['hot']
 newColors= hot(linspace(0, 1, 420))[:256]
 newcmp = ListedColormap(newColors)
-matplotlib.colormaps.register(cmap=newcmp, name = 'calent', force=True)
+cm.register(cmap=newcmp, name = 'Spectra', force=True)
+cm.register(cmap=newcmp.reversed(), name='Spectra_r', force=True)
 
 cmaps_custom = [
     # Personalitzats
-    "AFM",
-    "MAG",
-    "PHASE",
+    "Height",
+    "Mag",
+    "Phase",
     "CPD",
-    "COND",
+    "Cond",
     "SPV",
-    "GRAIN"]
+    "Grain",
+    "Spectra"]
 
 cmaps_matplotlib = [
     # Moderns / perceptuals
-    "calent",
     "viridis",
     "plasma",
     "inferno",
@@ -139,7 +140,7 @@ colors: dict[str, dict[str, Sequence[tuple[float, ...]]]] = {
     (255/N, 1-0/N, 1-0/N)],
     },
 
-    'AFM' :  {'red':     
+    'Height' :  {'red':
         [(0/N, 1-255/N, 1-255/N),
         (32/N, 1-136/N, 1-136/N),
         (94/N, 1-57/N, 1-57/N),
@@ -163,7 +164,7 @@ colors: dict[str, dict[str, Sequence[tuple[float, ...]]]] = {
         (220/N, 1-42/N, 1-42/N),
         (255/N, 1-4/N, 1-4/N)],
         },
-    'MAG' :  {'red':
+    'Mag' :  {'red':
         [(0/N , 1-255/N, 1-255/N),
         (26/N , 1-219/N, 1-219/N),
         (51/N , 1-184/N, 1-184/N),
@@ -247,7 +248,7 @@ colors: dict[str, dict[str, Sequence[tuple[float, ...]]]] = {
         (153/N , 1-255/N, 1-255/N),
         (255/N , 1-255/N, 1-255/N)]}, 
     
-    # 'COND' : {'red': # Mapa addicional per a COND. Una escala de colors taronja i blau amb centre negre.     
+    # 'Cond' : {'red': # Mapa addicional per a COND. Una escala de colors taronja i blau amb centre negre.
     #     [(0/N, 1-255/N, 1-255/N),
     #     (32/N, 1-136/N, 1-136/N),
     #     (94/N, 1-57/N, 1-57/N),
@@ -280,14 +281,14 @@ def load_colormaps(): # Crea els colormaps personalitzats a partir dels canals d
         matplotlib.colormaps.register(cmap=cmap.reversed(), force=True)
         
     # Assign standard colormaps to aliases  
-    matplotlib.colormaps.register(cmap=plt.get_cmap('plasma'), name='PHASE', force=True)
-    matplotlib.colormaps.register(cmap=plt.get_cmap('plasma_r'), name='PHASE_r', force=True)
-    matplotlib.colormaps.register(cmap=plt.get_cmap('viridis'), name='COND', force=True)
-    matplotlib.colormaps.register(cmap=plt.get_cmap('viridis_r'), name='COND_r', force=True)
+    matplotlib.colormaps.register(cmap=plt.get_cmap('plasma'), name='Phase', force=True)
+    matplotlib.colormaps.register(cmap=plt.get_cmap('plasma_r'), name='Phase_r', force=True)
+    matplotlib.colormaps.register(cmap=plt.get_cmap('viridis'), name='Cond', force=True)
+    matplotlib.colormaps.register(cmap=plt.get_cmap('viridis_r'), name='Cond_r', force=True)
 
     # Custom ListedColormap
-    grain_cmap = ListedColormap(['black', 'tab:orange'], name='GRAIN')
+    grain_cmap = ListedColormap(['black', 'tab:orange'], name='Grain')
     matplotlib.colormaps.register(cmap=grain_cmap, force=True)
     
-    grain_cmap_r = ListedColormap(['tab:orange', 'black'], name='GRAIN_r')
+    grain_cmap_r = ListedColormap(['tab:orange', 'black'], name='Grain_r')
     matplotlib.colormaps.register(cmap=grain_cmap_r, force=True)

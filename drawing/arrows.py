@@ -3,7 +3,7 @@ from math import floor
 
 from matplotlib.patheffects import withStroke
 from matplotlib.patches import FancyArrowPatch
-from process import perfil as prf
+from process.converter import coords_to_pixel, pixel_center
 
 class FletxaBase:
     def __init__(self, ax, start, end, mida, text, color):
@@ -124,8 +124,7 @@ class FletxaInteractiva(FletxaBase):
         super().__init__(ax, None, None, mida, text, color)
 
         self.Z = Z
-        self.Ny, self.Nx = Z.shape
-        self.midaX, self.midaY = mida
+        self.N = Z.shape[::-1]
 
         self.stop = False
         self.on_fletxa_finalitzada = on_fletxa_finalitzada
@@ -136,22 +135,11 @@ class FletxaInteractiva(FletxaBase):
 
         self.ax.set_autoscale_on(False)
 
-    def _snap_to_pixel(self, xdata, ydata):
-        col = int(round(xdata * self.Nx / self.midaX))
-        row = int(round(ydata * self.Ny / self.midaY))
-
-        if col < 0 or col >= self.Nx or row < 0 or row >= self.Ny:
-            return None
-
-        x_phys = (col + 0.5) * self.midaX / self.Nx
-        y_phys = (row + 0.5) * self.midaY / self.Ny
-        return x_phys, y_phys
-
     def on_click(self, event):
         if event.inaxes != self.ax or self.stop:
             return
 
-        point = self._snap_to_pixel(event.xdata, event.ydata)
+        point = pixel_center([(event.xdata, event.ydata)], self.N, self.mida)[0]
         if point is None:
             return
 
@@ -167,20 +155,10 @@ class FletxaInteractiva(FletxaBase):
     # si cal, cridar on_fletxa_finalitzada
 
         if self.on_fletxa_finalitzada:
-            p1, p2 = self._calcular_pixels()
-            get_line = prf.get_line(p1, p2)
-            get_length = np.hypot(
-                self.end[0] - self.start[0],
-                self.end[1] - self.start[1]
-            )
+            p1, p2 = coords_to_pixel((self.start, self.end), self.N, self.mida)
+            length = np.hypot(self.end[0] - self.start[0], self.end[1] - self.start[1])
 
-            self.on_fletxa_finalitzada(
-                get_line,
-                get_length,
-                self.start,
-                self.end
-            )
-
+            self.on_fletxa_finalitzada((p1, p2), length)
             self.desconnecta()
 
     def on_motion(self, event):
@@ -193,20 +171,14 @@ class FletxaInteractiva(FletxaBase):
         ):
             return
 
-        end = self._snap_to_pixel(event.xdata, event.ydata)
+        end = pixel_center([(event.xdata, event.ydata)], self.N, self.mida)[0]
         if end is None:
             return
 
         self.end = end
         self._actualitzar_fletxa()
 
-    def _calcular_pixels(self):
-        p1 = [floor(self.start[0] * self.Nx / self.midaX), floor(self.start[1] * self.Ny / self.midaY)]
-        p2 = [floor(self.end[0] * self.Nx / self.midaX), floor(self.end[1] * self.Ny / self.midaY)]
-        return p1, p2
-
 class FletxaEstatica(FletxaBase):
-    def __init__(self, ax, lims, mida, text, color):
-        start, end = lims
-        super().__init__(ax, start, end, mida, text, color)
+    def __init__(self, *args):
+        super().__init__(*args)
         self.dibuixa()  # Dibuixa la fletxa un cop

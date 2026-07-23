@@ -140,12 +140,12 @@ def load_wsxm(filename):
 
     return image, meta
 
-def load(file_list):
+def load(file_list, fileclass):
     type_map = {'.top': 'AFM', '.Auxfeed': 'CPD', '.ch15': 'MAG', '.ch16': 'PHASE'}
     channels = {}
 
     for file in file_list:
-        tipus = type_map[file.suffix]
+        name = type_map[file.suffix]
 
         Z, meta = load_wsxm(file)
 
@@ -153,6 +153,7 @@ def load(file_list):
         mida = get_lateral_size(meta, Nx, Ny)
         N = Nx, Ny
 
-        channels[tipus] = ChannelData(tipus=tipus, name=tipus, Z=Z, lims=None, mult=True)
-    
-    return channels, N, mida
+        channels[name] = ChannelData(name=name, Z=Z)
+
+    data = {'channel': channels, 'N': N, '_midaBase': mida}
+    return fileclass(**data)

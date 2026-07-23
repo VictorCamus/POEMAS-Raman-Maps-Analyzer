@@ -82,8 +82,8 @@ class Histogrames(BaseFigureWindow):
         color = self.widgets['cb_color'].value.get()
         
         match self.mode:
-            case "Hist": self.plot, self.hist_data, _ = hist(self.ax, self.data, self.lims, xlabel=self.channel.dades.title, color=color)
-            case "Box": self.plot = boxplot(self.ax, self.data, self.lims, name=self.channel.name, ylabel=self.channel.dades.title, color=color)
+            case "Hist": self.plot, self.hist_data, _ = hist(self.ax, self.data, self.lims, xlabel=self.channel.ax_title, color=color)
+            case "Box": self.plot = boxplot(self.ax, self.data, self.lims, name=self.channel.name, ylabel=self.channel.ax_title, color=color)
 
         self.fig.tight_layout()
         self.fig.tight_layout()
@@ -176,7 +176,7 @@ class DirectionMean(BaseFigureWindow):
 
         self.plot, = self.ax.plot([], [], color='blue')
         self.ax.set_xlabel(r'Length ($\mu$m)')
-        self.ax.set_ylabel(self.channel.dades.title)
+        self.ax.set_ylabel(self.channel.ax_title)
         self.set_widgets()
         
         self.fig_frame.grid(row=14, column=2, pady=10)
@@ -187,7 +187,7 @@ class DirectionMean(BaseFigureWindow):
         
     def plot_channel(self, value):
         self.channel = value
-        self.ax.set_ylabel(self.channel.dades.title)
+        self.ax.set_ylabel(self.channel.ax_title)
         self.set_widgets()
 
     def set_widgets(self, **kwargs):

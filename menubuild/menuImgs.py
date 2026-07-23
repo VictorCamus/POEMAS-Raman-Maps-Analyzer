@@ -1,7 +1,5 @@
 from operator import xor
-
 import numpy as np
-from process import perfil as prf
 
 from .base import BaseMenu
 from tkinter import messagebox
@@ -54,27 +52,6 @@ class GestorImatges(BaseMenu): # Classe que gestiona les accions relacionades am
 
         return xnew, ynew
 
-    def _perfils_rotacio(self, file, rotation, flip):
-        Nx, Ny = file.N
-        
-        for num, (line, fletxa) in enumerate(zip(file.get_line.values(), file.fletxa.values())):
-            p1, p2 = line[0], line[-1]
-            
-            match rotation:
-                case 0: pass
-                case 1: p1, p2 = [p1[1], Ny - p1[0]], [p2[1], Ny - p2[0]]
-                case 2: p1, p2 = [Nx - p1[0], Ny - p1[1]], [Nx - p2[0], Ny - p2[1]]
-                case 3: p1, p2 = [Nx - p1[1], p1[0]], [Nx - p2[1], p2[0]]
-
-            if flip: p1, p2 = [Nx - p1[0], p1[1]], [Nx - p2[0], p2[1]]
-            file.get_line[num] = prf.get_line(p1, p2)
-
-            fletxa.elimina()
-            fletxa.start = [p1[0] * file.midaBase[0] / file.N[0], p1[1] * file.midaBase[1] / file.N[1]]
-            fletxa.end = [p2[0] * file.midaBase[0] / file.N[0], p2[1] * file.midaBase[1] / file.N[1]]
-            file.get_arrowlims[num] = fletxa.start, fletxa.end
-            fletxa.dibuixa()
-
     def _actualitzar_rotacio(self, file, rot, flip):
         if rot % 2:
             file.midaBase = file.midaBase[::-1]
@@ -88,7 +65,9 @@ class GestorImatges(BaseMenu): # Classe que gestiona les accions relacionades am
         file.zoom.xylims = self._rotar_limits(*file.zoom.xylims, *file.midaBase, rot, flip)
         file.image.set_extent([0, file.midaBase[0], 0, file.midaBase[1]])
 
-        if hasattr(file, 'get_line'): self._perfils_rotacio(file, rotation=rot, flip = flip)
+        if file.profile is not None:
+            for prof in file.profile.values(): prof.rotate(file.N, file.midaBase, rot, flip)
+
         if file.zoom.mida[0] != file.zoom.mida[1]: file.zoom._resize()
 
     def _rot_sync(self):

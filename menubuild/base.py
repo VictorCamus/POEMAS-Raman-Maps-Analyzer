@@ -66,11 +66,6 @@ class BaseMenu(Condicions):  # Classe base per a gestionar les accions comunes d
         channel = file.current_channel if file else None
         return file, channel
     
-    def create_frame(self, notebook, name):
-        frame = Frame(notebook)
-        notebook.add(frame, text=name)
-        return frame
-    
     def create_window(self, title: str, gridBuilder: list[tuple] = None, tabConfig: list[tuple] = None, **extra):
         window = Toplevel(self.root)
         window.title(title)

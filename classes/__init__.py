@@ -1,3 +1,4 @@
-from .filechannel import FileData, ChannelData
+from .file import FileData
+from .channel import ChannelData
 
 __all__ = ["FileData", "ChannelData"]

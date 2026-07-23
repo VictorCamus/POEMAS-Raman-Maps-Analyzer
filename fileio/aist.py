@@ -1,8 +1,7 @@
 import struct
 import numpy as np
 from classes import ChannelData
-from process.basics import nm_to_raman, nm_to_eV
-from CCD.correction import ccd_correct
+from process.converter import nm_to_raman, nm_to_eV
 
 # =========================================================
 # BUFFER READER (equivalent a punters en C)
@@ -62,8 +61,10 @@ def read_qt_string(r):
 
     return raw.decode("utf-16-be")
 
-def read_qt_byte_array(r, dtype = "<f8"):
+def read_qt_byte_array(r, dtype = "<f8", uncompressed = False):
     length = read_qt_int(r)
+    if uncompressed: length = read_qt_int(r)
+
     if length == -1:
         return None
 
@@ -82,6 +83,13 @@ def read_qt_byte_array(r, dtype = "<f8"):
 def read_aist_common(r):
     return {
         "id": read_qt_int(r),
+        "name": read_qt_string(r),
+        "description": read_qt_string(r),
+        "index": read_qt_int(r),
+    }
+
+def read_aist_common_spectro(r):
+    return {
         "name": read_qt_string(r),
         "description": read_qt_string(r),
         "index": read_qt_int(r),
@@ -184,18 +192,13 @@ def read_aist_curve(r):
 # =========================================================
 
 def read_aist_spectro(r):
-    start = r.pos
-    length = read_qt_int(r)
-    spectra = np.frombuffer(r.data[start:start+length], dtype="<f4")
-    r.pos += length
-
-    common = read_aist_common(r)
+    spectra = read_qt_byte_array(r, dtype="<f4", uncompressed=True)
+    common_spec = read_aist_common_spectro(r)
 
     _ = read_qt_int(r)
     _ = read_qt_int(r)
 
     laser = read_qt_double(r)
-
     _ = read_qt_double(r)
     _ = read_qt_double(r)
     _ = read_qt_int(r)
@@ -204,7 +207,7 @@ def read_aist_spectro(r):
     nchan = read_qt_int(r)
     q_vec = read_qt_byte_array(r, dtype="<f4")
 
-    _ = read_aist_common(r)
+    common = read_aist_common(r)
 
     xres = read_qt_int(r)
     yres = read_qt_int(r)
@@ -225,7 +228,7 @@ def read_aist_spectro(r):
 
     return {
         "type": "spectro",
-        "common": common,
+        "common": common_spec,
         "laser": laser,
         "spectra": spectra,
         "xdata": q_vec,
@@ -303,9 +306,9 @@ def load_aist(filename):
 
     return results
 
-def load(file_list):
+def load(file_list, fileclass):
     file = file_list[0]
-    maps = {'Height(Sen)': 'AFM', 'Mag': 'MAG', 'Phase': 'PHASE', 'CPD[2]': 'CPD'}
+    maps = {'Height(Sen)': 'Height', 'Mag': 'Mag', 'Phase': 'Phase', 'CPD[2]': 'CPD'}
     data = load_aist(file)
 
     channels = {}
@@ -314,8 +317,6 @@ def load(file_list):
 
     for d in data:
         if N is None:
-            xunits = d['units']['x']
-            yunits = d['units']['y']
             N = (d['xres'], d['yres'])
             extent = d['extent']
             mida = (extent[1]-extent[0], extent[3]-extent[2])
@@ -323,22 +324,23 @@ def load(file_list):
         match d["type"]:
             case "raster":
                 name = d['common']['name']
-                
+                laser = None
                 if name == 'CPD': continue
                 if name.endswith('[2]') and name != 'CPD[2]': continue
 
                 tipus = maps[name]
-                channels[tipus] = ChannelData(tipus = tipus, name = tipus, Z = np.array(d['data'][::-1]), lims = None, mult = False)
+                channels[tipus] = ChannelData(name = tipus, Z = np.array(d['data'][::-1]), units = d['units']['z'], lims = None)
+
             case "spectro":
-                xdata = {'nm': d['xdata'], 
-                         'eV': nm_to_eV(d['xdata']),
-                         '1/cm': nm_to_raman(d['xdata'], d['laser'])}
+                xdata_nm = d['xdata']
+                xdata = {'nm': xdata_nm,
+                         'eV': nm_to_eV(xdata_nm),
+                         '1/cm': nm_to_raman(xdata_nm, d['laser'])}
 
-                spectra = d['spectra'].copy()
-                spectra = ccd_correct(xdata['nm'], spectra)
+                spectra = d['spectra'].reshape(N[1], N[0], d['spectra'].shape[1]).copy()
                 laser = d['laser']
-                units = d['units']['z']
+                channels['Spectra'] = ChannelData(name = 'Spectra', units = d['units']['z'], lims = None, xdata = xdata, spectra = spectra)
 
-                return xdata, spectra, N, mida, laser, units
+    data = {'channel': channels, 'N': N, '_midaBase': mida, 'laser': laser}
 
-    return channels, N, mida
+    return fileclass(**data)

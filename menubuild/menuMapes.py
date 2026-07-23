@@ -3,9 +3,9 @@ import numpy as np
 from tkinter import messagebox
 from tkinter.ttk import Frame
 
-from classes import ChannelData, diccionaris as dicc
+from classes import ChannelData
 from .base import BaseMenu
-from window import BaseWindow, BaseMapWindow
+from window import BaseWindow
 from process.shiftphase import cross_correlation_shift, apply_crop
 
 class GestorMapes(BaseMenu): # Classe que gestiona les accions relacionades amb el zoom de les imatges.
@@ -33,55 +33,15 @@ class GestorMapes(BaseMenu): # Classe que gestiona les accions relacionades amb 
                 if f is file: continue
                 if key in f.channel: f.channel[key].lims = np.copy(channel.lims)
 
-class RescaleMaps(BaseMapWindow):
-    def __init__(self, gestor):
-        self.opt = "sum"
-        super().__init__(gestor, "Reescalar mapes")
-    
-    def _grid(self):
-        files = list(self.files.keys())
-        channels = list(self.file.channel.keys())
-        opts = {"Sumar": "sum",
-                "Multiplicar": "mult",
-                "Normalitzar": "norm"}
-
-        return [
-            (("file", str, self.file.name), ("Arxiu:", 'cb', {"options": files}), (self, "attr")),  
-            (("channel", str, self.channel.name), ("Canal:", 'cb', {"options": channels}), (self, "attr")),
-            (("opt", str, self.opt), ("Opcions:", 'cb', {"options": opts}), (self, "attr")),
-            (("value", float, 0), ("Valor:", 'entry'), (self.reescale_ops, "args"))
-            ]
-    
-    def reescale_ops(self, value):
-        file = self.file; channel = self.channel; opt = self.opt
-
-        z = np.copy(channel.Z)
-        match opt:  
-            case "sum": z += value
-            case "mult": z *= value
-            case "norm":
-                zMin, zMax = z.min(), z.max()
-                z = (z-zMin)/(zMax-zMin)
-                channel.lims = [0, 1]
-
-        if opt != "norm":
-            channel.lims = dicc.lims(z, channel.tipus)
-            
-        file.image.set_data(z)
-        file.capçalera.limInf, file.capçalera.limSup = channel.lims
-        file.canvas.draw_idle()
-
 class OperarMaps(BaseWindow):
     def __init__(self, gestor):
         self.opt = "subs"
         self.new_chname = None
-        self.new_chtype = "SPV"
         
         super().__init__(gestor, "Operar amb canals")
 
     def _grid(self):
         list_files, channels, initCh = self.compare_files()
-        chTypes = list(dicc.all_maps().keys())
         
         operations = {"Suma (F2+F1)": "sum", "Resta (F2-F1)": "subs",
                         "Multiplicació (F2*F1)": "mult", "Divisió (F2/F1)": "div"}
@@ -92,7 +52,6 @@ class OperarMaps(BaseWindow):
             (("channel", str, initCh), ("Canal", 'cb', {"options": channels}), (self, "attr")),
             (("opt", str, "subs"), ("Operació", 'radiobutton', {"options": operations}), (self, "attr")),
             (("new_chname", str, None), ("Nom nou canal", 'entry'), (self, "attr")),
-            (("new_chtype", str, 'SPV'), ("Tipus de canal", 'cb', {"options": chTypes}), (self, "attr")),
             (("newCh", str, "Aplicar"), ("", 'button'), (self.apply_op, "args"))
             ]
     
@@ -117,7 +76,7 @@ class OperarMaps(BaseWindow):
             tab = Frame(f.notebook)
             f.notebook.add(tab, text=self.new_chname)
 
-            f.channel[self.new_chname] = ChannelData(self.new_chtype, self.new_chname, zNew)
+            f.channel[self.new_chname] = ChannelData(self.new_chname, self.new_chname, zNew)
             f.channel[self.new_chname].frame = tab
             
         return True

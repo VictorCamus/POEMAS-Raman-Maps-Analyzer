@@ -174,7 +174,7 @@ def update(func: callable, value, name: str, mode: str, figure: object, **extra)
 
 TYPE_MAP = {float: DoubleVar, bool: BooleanVar, str: StringVar, object: ObjectVar}
      
-def build_grid(frame, grid, row: int = 0, col: int = 0, figure: object = None, button: object = True):
+def build_grid(frame, grid, row: int = 0, col: int = 0, figure: object = None, button: object = True, vertical = True):
     from functools import partial
 
     def apply_all():
@@ -191,10 +191,14 @@ def build_grid(frame, grid, row: int = 0, col: int = 0, figure: object = None, b
         setter_func, setter_type, setter_kwargs = setter if len(setter) == 3 else (setter[0], setter[1], {})
         
         set_value = TYPE_MAP[type_var](frame, value=init_value)
-        callback = partial(update, setter_func, mode = setter_type, figure=figure, **setter_kwargs)
-        
+        if setter_func: callback = partial(update, setter_func, mode = setter_type, figure=figure, **setter_kwargs)
+        else: callback = None
+
+        if vertical: row += i
+        else: col += 2*i
+
         widgets[key] = create_widget(
-            obj_widget, frame, text_label=obj_label, row=i+row, col=col,
+            obj_widget, frame, text_label=obj_label, row=row, col=col,
             key=key, callback=callback, set_value=set_value, **obj_extra)
     
     if button:
@@ -209,6 +213,11 @@ def tab(notebook, grid, name, **kwargs):
     notebook.add(tab_frame, text=name)
     widgets = build_grid(tab_frame, grid, **kwargs)
     return widgets
+
+def create_frame(notebook, name):
+    frame = Frame(notebook)
+    notebook.add(frame, text=name)
+    return frame
 
 def destroy_widgets(widgets_dict): # Destrueix tots els widgets i els seus labels associats.
     for w in widgets_dict.values():

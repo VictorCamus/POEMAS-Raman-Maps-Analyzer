@@ -13,6 +13,7 @@ from time import perf_counter
 from drawing.plots import base_plot
 from process.basics import find_nearest
 from window.builder import BaseFigureWindow
+import matplotlib.pyplot as plt
 
 @dataclass
 class Ajust:
@@ -63,13 +64,32 @@ def spike_removal(y, width_threshold=3, prominence_threshold = 1000, moving_aver
 def ajust_pic(x, y, func, coords, params):
     try:
         result = minimize(residual, params, args=(x, y, func), method="least_squares", diff_step=1e-4, max_nfev = 500)
-        return result, result.success
+        return result, test_ajust(result, y, func(x, result.params))
 
     except (ValueError, RuntimeError) as e:
         ix,iy = coords
         print(f"Error ajustant el pic X={ix} Y={iy}: {e}")
-        return None, False
-        
+        return None, (False, None)
+
+def test_ajust(result, y, fit):
+
+    if not result.success:
+        return False, np.nan
+
+    ss_res = np.sum((y - fit) ** 2)
+    ss_tot = np.sum((y - np.mean(y)) ** 2)
+
+    r2 = 1 - ss_res / ss_tot
+
+    if r2 < 0.5:
+        return False, r2
+
+    for p in result.params.values():
+        if p.stderr is None:
+            return False, np.nan
+
+    return True, r2
+
 def write_header(ruta, info):
     f = open(f"{ruta}.txt", "w", encoding="utf-8", newline="")
 
@@ -103,6 +123,7 @@ def write_bkg(ruta, info, data):
 def write_init_params(ruta, fit):
     with open(f"{ruta}__init_params.txt", "w", encoding="utf-8") as f:
         f.write(f"# Ajust: {fit.nom}\n")
+        f.write(f"# Pics: {', '.join(fit.PeakNames.values())}\n")
         f.write(f"# Funcions: {', '.join(fit.PeakFuncs)}\n\n")
 
         header = ["Paràmetre", "Valor", "Mínim", "Màxim", "Expr", "Vary"]
@@ -115,7 +136,9 @@ def write_init_params(ruta, fit):
 
 def fit_function(file, fits, fonsSplineGlobal=False):
     print(f'Obrint {file.stem}')
-    xdata, spectra, N, _, _, units = open_file([file], file.suffix)
+    channel, N, mida, units, laser = open_file([file], file.suffix)
+    spectra = channel['Spectra'].spectra
+    xdata = channel['Spectra'].xdata
     Nx, Ny = N
     Ntotal = Nx*Ny
 
@@ -126,8 +149,9 @@ def fit_function(file, fits, fonsSplineGlobal=False):
             bkg, params = baseline_fitter.mixture_model(ydata)
             y = i // Nx + 1; x = i % Nx + 1
             bkgMatrix.append([x, y, *bkg])
-
+    
     for fit in fits:
+        r2 = []
         t1 = perf_counter()
         xfit = xdata[fit.units]
         IdxInf, IdxSup = sorted(find_nearest(xfit, fit.rang))
@@ -139,40 +163,52 @@ def fit_function(file, fits, fonsSplineGlobal=False):
 
         print(f'Fit {fit.nom}:\n')
         fit_files = {peak: write_header(f'{ruta}_{peak}', Info(fit.nom, peak, func, fit.units, fit.rang[0], fit.rang[1]))
-                     for peak, func in zip(fit.PeakNames, fit.PeakFuncs)}
+                     for peak, func in zip(fit.PeakNames.values(), fit.PeakFuncs)}
 
         for i, ydata in enumerate(spectra):
             if i%100 == 0: print(f"Ajustant espectre {i+1}/{Ntotal}...\n")
             if fonsSplineGlobal: ydata -= bkgMatrix[i][2:]
-
-            ydata, canviat = spike_removal(ydata)
+            # ydata, canviat = spike_removal(ydata)
             yfit = ydata[IdxInf:IdxSup]
-
             iy = i // Nx + 1; ix = i % Nx + 1
             if ix == 1: params_actuals = fit.params.copy()
 
-            if np.sum(yfit) <= fit.threshold: success = False
+            if np.sum(yfit) <= fit.threshold: success = False, np.nan
             else: result, success = ajust_pic(xfit, yfit, fit.funcio, (ix,iy), params_actuals)
 
-            if success: params_actuals = result.params.copy()
-
-            for peak, func in zip(fit.PeakNames, fit.PeakFuncs):
+            if success[0]: params_actuals = result.params.copy()
+            r2.append(success[1])
+            for (peak_num, peak_name), func in zip(fit.PeakNames.items(), fit.PeakFuncs):
                 pars = FuncParams[func]
                 line = f"{ix:<4d} {iy:<4d}"
 
-                if not success: line += f" {np.nan:<10}" * (2 * len(pars))
+                if not success[0]: line += f" {np.nan:<10}" * (2 * len(pars))
                 else:
                     vals = []
                     errs = []
 
                     for par in pars:
-                        p = params_actuals[f"{peak}_{par}"]
+                        p = params_actuals[f"{peak_num}_{par}"]
                         vals.append(p.value)
                         errs.append(np.nan if p.stderr is None else p.stderr)
 
                     line += "".join(f" {x:<10.3f}" for x in (vals + errs))
 
-                fit_files[peak].write(f"{line}\n")
+                fit_files[peak_name].write(f"{line}\n")
+
+        r2 = np.array(r2)
+        r2 = r2[np.isfinite(r2)]
+        values, bins = np.histogram(r2, bins = 50)
+        bins = (bins[1:] + bins[:-1])/2
+        r2 = np.asarray(r2)
+        r2 = r2[np.isfinite(r2)]
+
+        values, bins = np.histogram(r2, bins=50)
+
+        bins = (bins[:-1] + bins[1:]) / 2
+
+        plt.bar(bins, values, width=bins[1] - bins[0], align='center')
+        plt.show()
 
         for f in fit_files.values(): f.close()
         print(f"Temps total: {perf_counter()-t1:3f} s\n")
@@ -196,53 +232,94 @@ class FitSpec(BaseFigureWindow):
         plt.show()
 
 if __name__ == '__main__':
+
     params = Parameters()
 
     # Pic 1
-    params.add('LE_FWHM', value=0.45, min=0, max=0.6)
-    params.add('LE_A', value=500, min=10)
+    params.add("P1_x0", value = 1.26, min = 1.2, max = 1.35)
+    params.add("P1_FWHM", value=0.1, min=0, max=0.5)
+    params.add("P1_A", value=1000, min=5)
 
+    params.add("delta_x0", value = 0.2, min = 0)
+
+    params.add("P2_x0", expr = 'P1_x0 + delta_x0')
     # Pic 2
-    params.add("FE_x0", value = 2.38, min = 2.37, max = 2.42)
-    params.add("Delta", value=0.23, min=0.18, max=0.3)
-    params.add('LE_x0', expr="FE_x0 - Delta")
-    params.add("FE_FWHM", value=0.17, min=0, max=0.2)
-    params.add('Aratio', value = 0.1, min = 0, max = 0.5)
-    params.add("FE_A", expr = 'Aratio*LE_A')
+    params.add("P2_x0", value = 1.25, min = 1.2, max = 1.35)
+    params.add("P2_FWHM", value=0.1, min=0, max=0.5)
+    params.add("P2_A", value=200, min=5)
 
     # Baseline
-    params.add('bkg_C', value=100, min=0, max=300)
+    params.add("bkg_C", value=100, min=0, max=5000)
 
-    fit1 = Ajust(
-        nom = "PL-2peaksPEAPbI7", # Name of the fit
-        PeakNames = ["LE", "FE", "bkg"], # Name of the peaks in the fit
+    PeakNames = {'P1': "BG", 'P2': "Defect", "bkg": "bkg"}
+
+    fitPL = Ajust(
+        nom = "PL-InSe", # Name of the fit
+        PeakNames = PeakNames, # Name of the peaks in the fit
         PeakFuncs = ['G', 'G', 'C'], # Functions for single peak representation
         units = 'eV', # Units: nm, eV, 1/cm
-        rang = [1.8, 2.7], # Spectral range to fit
+        rang = [1.2, 1.5], # Spectral range to fit
         params = params,
-        threshold = 35000) # Limits for the fit parameters
+        threshold = 3000) # Limits for the fit parameters
 
     params = Parameters()
 
     # Pic 1
-    params.add('LE_x0', value=2.2, min=1.9, max=2.4)
-    params.add('LE_FWHM', value=0.45, min=0, max=2)
-    params.add('LE_A', value=500, min=20)
+    params.add("P1_x0", value = 115, min = 105, max = 125)
+    params.add("P1_FWHM", value=4, min=0.1, max=20)
+    params.add("P1_A", value=500, min=5)
+
+    # Pic 2
+    params.add("P2_x0", value = 177, min = 170, max = 185)
+    params.add("P2_FWHM", value=6, min=0.1, max=20)
+    params.add("P2_A", value=500, min=5)
+
+    # Pic 3
+    # params.add("P3_x0", value = 199, min = 190, max = 210)
+    # params.add("P3_FWHM", value=6, min=0.1, max=20)
+    # params.add("P3_A", value=500, min=10)
+
+    # Pic 4
+    params.add("P4_x0", value = 226, min = 215, max = 240)
+    params.add("P4_FWHM", value=6, min=0.1, max=20)
+    params.add("P4_A", value=500, min=5)
 
     # Baseline
-    params.add('bkg_C', value=100, min=0, max=300)
+    params.add("bkg_C", value=100, min=0, max=300)
+
+    # 'P3': "A₁ (Γ₁¹)",
+    PeakNames = {'P1': "A₁ (Γ₁²)", 'P2': "E (Γ₁²)", 'P4': "A₁ (Γ₁³)",
+                 "bkg": "bkg"}
+
+    fit1 = Ajust(
+        nom = "RAMAN-InSe", # Name of the fit
+        PeakNames = PeakNames, # Name of the peaks in the fit
+        PeakFuncs = ['L', 'L', 'L', 'C'], # Functions for single peak representation
+        units = '1/cm', # Units: nm, eV, 1/cm
+        rang = [50, 350], # Spectral range to fit
+        params = params,
+        threshold = 3000) # Limits for the fit parameters
+
+    params = Parameters()
+
+    # Silici
+    params.add("P1_x0", value = 520, min = 510, max = 530)
+    params.add("P1_FWHM", value=2, min=0.5, max=20)
+    params.add("P1_A", value=1500, min=50)
+
+    params.add("bkg_C", value=100, min=0, max=300)
+
+    PeakNames = {'P1': "Si TO", "bkg": "bkg"}
 
     fit2 = Ajust(
-        nom = "PL-1peakPEAPbI7", # Name of the fit
-        PeakNames = ["LE", "bkg"], # Name of the peaks in the fit
+        nom = "RAMAN-Si", # Name of the fit
+        PeakNames = PeakNames, # Name of the peaks in the fit
         PeakFuncs = ['G', 'C'], # Functions for single peak representation
-        units = 'eV', # Units: nm, eV, 1/cm
-        rang = [1.8, 2.7], # Spectral range to fit
+        units = '1/cm', # Units: nm, eV, 1/cm
+        rang = [510, 530], # Spectral range to fit
         params = params,
-        threshold = 35000) # Limits for the fit parameters
+        threshold = 500) # Limits for the fit parameters
 
-    #IMPORTANT: only fits added to this vector will be done:
-    fits = [fit1, fit2]
-
+    fits = [fitPL]
     nomsFmapes = filedialog.askopenfilenames(filetypes = [("AIST", "*.aist"), ("TXT", "*.txt")])
     for nom in nomsFmapes: fit_function(Path(nom), fits, fonsSplineGlobal=False)

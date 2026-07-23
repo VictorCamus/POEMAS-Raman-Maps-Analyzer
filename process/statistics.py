@@ -74,8 +74,8 @@ def lims_outliers(arr):
     inf = quart1 - 4 * iqr; sup = quart3 + 4 * iqr
     lim_inf = max(inf, np.min(arr))
     lim_sup = min(sup, np.max(arr))
-    lim_inf = truncar_significatives(lim_inf, 2, cap_a = 'avall')
-    lim_sup = truncar_significatives(lim_sup, 2, cap_a = 'amunt')
+    lim_inf = truncar_significatives(lim_inf, 3, cap_a = 'avall')
+    lim_sup = truncar_significatives(lim_sup, 3, cap_a = 'amunt')
     return lim_inf, lim_sup
 
 def guardar_histograma_grans(zhist, carpzoom, mida_base, N, tipus, name): # Guarda els histogrames dels grans en la carpeta especificada.

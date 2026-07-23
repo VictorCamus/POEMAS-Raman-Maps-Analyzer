@@ -122,7 +122,7 @@ class Aplicacio: # Classe principal de l'aplicació que gestiona la interfície 
         if not self.current_file: return
 
         for f in self.files.values():
-            if f != self.current_file:
+            if f is not self.current_file:
                 f.zoom._resize()
 
         self._restants_timer_id = None

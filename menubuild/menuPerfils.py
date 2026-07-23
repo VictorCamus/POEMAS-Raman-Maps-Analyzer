@@ -3,13 +3,14 @@ import shutil
 import stat
 import numpy as np
 
-from process import perfil as prf
-from drawing.arrows import FletxaInteractiva, FletxaEstatica
+from drawing.arrows import FletxaInteractiva
 from drawing.plots import base_plot
 from tkinter import messagebox, Button, filedialog
 from .base import BaseMenu
 from window import BaseFigureWindow
 from pathlib import Path
+from classes.file import ProfileData
+from process.basics import get_line
 
 class GestorPerfils(BaseMenu):  # Classe que gestiona les accions relacionades amb els perfils de fletxes.
     ordre = 30
@@ -18,7 +19,6 @@ class GestorPerfils(BaseMenu):  # Classe que gestiona les accions relacionades a
         super().__init__(app, get_current, set_current)  # Inicialitza la classe base
 
         self.color = ['r','b','g','orange','y','cyan','pink','k']
-        self.attrs = ('fletxa', 'get_line', 'get_length', 'get_arrowlims')
 
     def registrar_menu(self, menu):
         accions = [
@@ -35,7 +35,7 @@ class GestorPerfils(BaseMenu):  # Classe que gestiona les accions relacionades a
     
     def obrir_mostrar_perfils(self):
         if not self.comprova_fitxer(): return
-        if not list(key for key, f in self.files.items() if hasattr(f, 'fletxa')):
+        if not list(key for key, f in self.files.items() if f.profile is not None):
             messagebox.showinfo("Informació", "No hi ha cap perfil dibuixat.")
             return
         
@@ -45,7 +45,7 @@ class GestorPerfils(BaseMenu):  # Classe que gestiona les accions relacionades a
         if not self.comprova_fitxer(): return
         file = self.current_file
 
-        if not hasattr(file, 'get_line'): return
+        if file.profile is None: return
         
         for f in self.files.values():
             if f is file: continue
@@ -54,81 +54,80 @@ class GestorPerfils(BaseMenu):  # Classe que gestiona les accions relacionades a
                 messagebox.showwarning("Atenció", f"El fitxer '{f.name}' té una mida diferent i no es poden propagar els perfils.")
                 continue
             
-            f.get_line = file.get_line.copy()
-            f.get_length = file.get_length.copy()
-            f.get_arrowlims = file.get_arrowlims.copy()
-
-            f.fletxa = {num: FletxaEstatica(f.axis, f.get_arrowlims[num],f.midaBase, num+1, self.color[num % 8])
-                        for num in file.get_line}
+            f.profile = {num: ProfileData(prof.line, prof.length) for num, prof in file.profile.items()}
+            for num, prof in f.profile.items():
+                prof.create_arrow(num, f.axis, f.N, f.midaBase)
 
     def _afegir_perfils(self): # Afegeix un perfil de fletxa a la pestanya actual.
                 
         def fer_perfils(file, channel, num):
 
-            def quan_fletxa_estiga_llesta(get_line_resultat, get_length_resultat, arrowStart, arrowEnd, file = file, num = num):
-                file.get_line[num] = get_line_resultat
-                file.get_length[num] = get_length_resultat
-                file.get_arrowlims[num] = arrowStart, arrowEnd
+            def quan_fletxa_estiga_llesta(pixels, length, file = file, num = num):
+                profile.line = get_line(*pixels)
+                profile.length = length
 
-            file.get_line[num] = None
-            file.get_length[num] = None
-            
-            file.fletxa[num] = FletxaInteractiva(
-                file.axis, channel.Z, num+1, file.midaBase,
-                self.color[num % 8], on_fletxa_finalitzada=quan_fletxa_estiga_llesta
-            )
+                file.profile[num] = profile
+
+            profile = ProfileData()
+            profile.arrow = FletxaInteractiva(file.axis, channel.Z, num+1, file.midaBase,
+                self.color[num % 8], on_fletxa_finalitzada=quan_fletxa_estiga_llesta)
             
         if not self.comprova_fitxer(): return
         file, channel = self.element_obert()
 
-        for attr in self.attrs:
-            if not hasattr(file, attr): setattr(file, attr, {})
-
-        if channel.tipus == 'GRAIN':
+        if channel.name == 'Grain':
             messagebox.showinfo("Informació", "No dibuixeu perfils sobre la pestanya GRAIN.")
             return
-        
-        fer_perfils(file, channel, len(file.fletxa))
+
+        nprof = 0 if file.profile is None else len(file.profile)
+        if nprof == 0: file.profile = {}
+        fer_perfils(file, channel, nprof)
         
     def _guardar_perfil(self, file, fig, ax): # Guarda els perfils dibuixats en fitxers de perfil.
-        if not hasattr(file, 'fletxa'):
+        if file.profile is None:
             messagebox.showerror("Error en guardar els perfils", "No hi ha cap perfil dibuixat")
             return False
+
+        profile = file.profile
+        nprof = len(profile)
 
         path_profile = file.folder / 'Perfils'
         if path_profile.exists():
             shutil.rmtree(path_profile, onerror=self._handle_remove_readonly)
 
-        cut = len(file.get_line)
         ax.set_xlabel(r'Length ($\mu$m)')
         fig.subplots_adjust(left=0.2, bottom=0.2)
 
-        if cut > 1: 
+        if nprof > 1:
             perfils_fig, perfils_axis = base_plot(r'Length ($\mu$m)', '', dim=(6,4))        
             perfils_fig.subplots_adjust(left=0.2, bottom=0.2)
         
         folders = {}
-        for num in range(len(file.get_line)):
+        for num in range(nprof):
             num += 1
             folders[num] = path_profile / f'Perfil - {num}'
             folders[num].mkdir(parents=True)
 
         for ch in file.channel.values():
-            if ch.tipus == 'GRAIN': continue
+            if ch.name == 'Grain': continue
             y_min = np.inf; y_max = -np.inf; length_max = 0
 
-            for num, (get_line, length, color) in enumerate(zip(file.get_line.values(), file.get_length.values(), self.color)):
-                ax.set_ylabel(ch.dades.title)
-                punts, dades, line = prf.plot_profile(ax, ch.Z, get_line, length, color)
-                prf.guardar(fig, ch.tipus, punts, dades, folders[num+1], num+1)    
+            for num, prof in profile.items():
+                ax.set_ylabel(ch.ax_title)
+                punts, dades, line = prof.plot(num, ax, ch.Z)
+
+                prof_path = folders[num+1] / f'{ch.name} - P{num+1}'
+                fig.savefig(f'{prof_path}.jpg', dpi=80)
+                np.savetxt(f'{prof_path}.txt', np.column_stack((punts, dades)), fmt='%.3f')
+
                 line.remove()
                 
-                if cut > 1:
-                    y_min = np.minimum(y_min, dades.min()); y_max = np.maximum(y_max, dades.max()); length_max = np.maximum(length_max, length)
+                if nprof > 1:
+                    y_min = np.minimum(y_min, dades.min()); y_max = np.maximum(y_max, dades.max()); length_max = np.maximum(length_max, prof.length)
                     perfils_axis.plot(punts, dades, color=color)
                 
-            if cut > 1:
-                perfils_axis.set_ylabel(ch.dades.title)
+            if nprof > 1:
+                perfils_axis.set_ylabel(ch.ax_title)
                 perfils_axis.set_xlim(0, length_max)
                 diff = (y_max-y_min)/15
                 perfils_axis.set_ylim(y_min-diff, y_max+diff)
@@ -139,7 +138,7 @@ class GestorPerfils(BaseMenu):  # Classe que gestiona les accions relacionades a
             file.redraw(ch)
             file.figure.savefig(path_profile / f'{ch.name}.jpg', bbox_inches='tight', dpi = 80)
 
-        if cut > 1: close(perfils_fig)
+        if nprof > 1: close(perfils_fig)
 
         return True
     
@@ -150,27 +149,24 @@ class GestorPerfils(BaseMenu):  # Classe que gestiona les accions relacionades a
         
     def _esborrar_perfils(self):
         if not self.comprova_fitxer(): return
-        
         file = self.current_file
-        if not hasattr(file, 'get_line'): return
-
-        for fletxa in file.fletxa.values(): fletxa.elimina()
-        for attr in self.attrs: delattr(file, attr)
+        if file.profile is None: return
+        for prof in file.profile.values(): prof.arrow.elimina()
+        file.profile = None
 
 class MostrarPerfils(BaseFigureWindow):
     def __init__(self, gestor):
-        self.color = ['r','b','g','orange','y','cyan','pink','k']
-        
         super().__init__(gestor, "Mostrar histogrames", dim = (5,4))
 
+        self.color = ['r', 'b', 'g', 'orange', 'y', 'cyan', 'pink', 'k']
         self.num = 0
 
         self.ax.set_xlabel(r'Length ($\mu$m)')
-        self.ax.set_xlim(0, self.file.get_length[0]);
-        self.ax.set_ylabel(self.channel.dades.title)
+        self.ax.set_xlim(0, self.file.profile[0].length)
+        self.ax.set_ylabel(self.channel.ax_title)
         
         self.line = {}
-        _, _, self.line[0] = prf.plot_profile(self.ax, self.channel.Z, self.file.get_line[0], self.file.get_length[0], self.color[0])
+        _, _, self.line[0] = self.file.profile[0].plot(0, self.ax, self.channel.Z)
         
         self.lims = self.ax.get_ylim()
         self.widgets['inf'].value.set(round(self.lims[0], 0))
@@ -189,7 +185,7 @@ class MostrarPerfils(BaseFigureWindow):
 
     @property
     def nprof(self):
-        return len(self.file.get_length)
+        return len(self.file.profile)
     
     @property
     def num(self):
@@ -205,7 +201,7 @@ class MostrarPerfils(BaseFigureWindow):
     
     def plot_channel(self, value):
         self.channel = value
-        self.ax.set_ylabel(self.channel.dades.title)
+        self.ax.set_ylabel(self.channel.ax_title)
         self.toggle_plot()
 
     def set_widgets(self):
@@ -233,8 +229,9 @@ class MostrarPerfils(BaseFigureWindow):
         self.num += k
 
         if self.num == self.nprof:
-            for num in range(self.nprof): _, _, self.line[num] = prf.plot_profile(self.ax, self.channel.Z, self.file.get_line[num], self.file.get_length[num], self.color[num % 8])
-        else: _, _, self.line[self.num] = prf.plot_profile(self.ax, self.channel.Z, self.file.get_line[self.num], self.file.get_length[self.num], self.color[self.num % 8])
+            for num, prof in self.file.profile.items(): _, _, self.line[num] = prof.plot(num, self.ax, self.channel.Z)
+        else: _, _, self.line[self.num] = self.file.profile[self.num].plot(self.num, self.ax, self.channel.Z)
+
         self.fig.tight_layout()
         self.fig.tight_layout()
         self.fig.canvas.draw_idle()
@@ -262,8 +259,8 @@ class MostrarPerfils(BaseFigureWindow):
             np.savetxt(txt_ruta, np.column_stack((x, y)), fmt="%.3f")
     
     def _grid(self):
-        files = list(key for key, f in self.files.items() if hasattr(f, 'fletxa'))
-        if not hasattr(self.file, 'fletxa'): self.file = files[0]    
+        files = list(key for key, f in self.files.items() if f.profile is not None)
+        if self.file.profile is None: self.file = files[0]
 
         channels = list(self.file.channel.keys())
 

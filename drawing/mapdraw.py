@@ -3,31 +3,29 @@ import numpy as np
 from process.basics import truncar_significatives
 # DIBUIX_MAPES: Llig les dades relacionades amb un fitxer AIST i les dibuixa sobre una figura.
 
-def create_map(cmap, Z, lims, units, mida, colLims = ('w', 'k'), interp = None):
+def create_map(*args, **kwargs):
     figure = Figure()
     figure.patch.set_alpha(0)
     axis = figure.add_subplot(111)
-    image = axis.imshow([[0]], origin="lower", interpolation = interp)
+    image = axis.imshow([[0]], origin="lower")
     
     cbar = create_cbar(figure, image)
-    update_map(image, cmap, Z, lims, units, mida, colLims, cbar = cbar, interp = None)
+    update_map(image, *args, **kwargs, cbar = cbar)
     ajust_eixos(axis)
     
     return figure, axis, image, cbar
 
-def update_map(image, cmap, Z, lims, units, mida = None, colLims = ('w', 'k'), cbar = None, interp = None):
+def update_map(image, cmap, Z, lims, units, mida = None, colLims = ('w', 'k'), cbar = None):
     vmin, vmax = lims
     
     if cmap == 'GRAIN': Z = (Z > 0).astype(int)  # Matriu binària: 1 si és un gra, 0 si no
         
     image.set_data(Z)
     image.set_cmap(cmap)
-    image.set_interpolation(interp)
     image.set_clim(vmin, vmax)
     image.set_clim(vmin, vmax)
     
-    if mida: image.set_extent([0, mida[0], 0, mida[1]])
-
+    if mida is not None: image.set_extent([0, mida[0], 0, mida[1]])
     if cbar: update_cbar(cbar, lims, units = units, colors = colLims) # Barra de colors.
 
 def ajust_eixos(ax): # Elimina els eixos del mapa

@@ -1,8 +1,8 @@
-from numpy import genfromtxt, unique
-from process.basics import raman_to_nm, raman_to_eV, nm_to_raman, nm_to_eV, eV_to_raman, eV_to_nm
-from CCD.correction import ccd_correct
+from numpy import genfromtxt, unique, nansum
+from process.converter import raman_to_nm, raman_to_eV, nm_to_raman, nm_to_eV, eV_to_raman, eV_to_nm
+from classes import ChannelData
 
-def load(file_list):
+def load(file_list, fileclass):
     file = file_list[0]
     with open(file) as f:
         is_laser = True
@@ -19,12 +19,14 @@ def load(file_list):
     q = dades[0,2:]
     y = unique(dades[1:,0])
     x = unique(dades[1:,1])
-    spectra = dades[1:, 2:]
-    
+
     N = len(x), len(y)
+    spectra = dades[1:, 2:]
+    spectra = spectra.reshape(N[1], N[0], spectra.shape[1])
+
     mida = (x[1]-x[0])*N[0], (y[1]-y[0])*N[1]
 
-    xdata = {}
+    xdata = {}; channels = {}
     match units:
         case 'nm': 
             xdata['nm'] = q
@@ -41,5 +43,7 @@ def load(file_list):
             xdata['eV'] = raman_to_eV(q, laser)
             xdata['1/cm'] = q
 
-    spectra = ccd_correct(xdata['nm'], spectra)
-    return xdata, spectra, N, mida, laser, units
+    channels['Spectra'] = ChannelData(name='Spectra', units = units, xdata=xdata, spectra=spectra)
+    data = {'channel': channels, 'N': N, '_midaBase': mida, 'laser': laser}
+
+    return fileclass(**data)

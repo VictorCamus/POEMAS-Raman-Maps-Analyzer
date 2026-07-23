@@ -38,7 +38,7 @@ def plot_peak(xdata, ax, peak, bkg, pos):
 
     etiquette = ax.annotate(f'{name} ({peakcenter:.2f})', xy=(peakcenter, peak.Intensity[*pos] + bkg[idx]),
                             xytext=(0, 10), textcoords='offset points', ha='center', color='k', fontweight='bold',
-                            family='Arial')
+                            family='DejaVu Sans')
 
     return etiquette
 

@@ -5,23 +5,26 @@ from matplotlib.colors import TABLEAU_COLORS
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import scipy.optimize as scopt
 import tkinter as tk
-from tkinter.ttk import Frame
 from pathlib import Path
-
+import tkinter.ttk as ttk
+from pandas import read_table
 from classes.peaks import Pic, Fons
 from drawing import mapdraw as mapa
-from classes.filechannel import InteraccioFigura
+from classes.file import InteraccioFigura
 from fileio.adapters import open_file
+from drawing.colormap import cmaps_matplotlib
 from drawing.plots import plot_peak
 from process.basics import find_nearest
 from process.statistics import lims_outliers
-from FittingProgram import FitSpec
-from window.headers import GestorHeaderRAMAN
+from classes import FileData
 
 #Variables inicials
+default_text_map = "Posició del cursor al mapa (punts)"
+default_text_spec = "Posició del cursor a l'espectre"
 colorsT = list(TABLEAU_COLORS.values())[1:]
-font = ("DejaVu Sans", 20)
-peakAttr = ["PeakCenter", "FWHM", "Intensity", "Area", "NormInt"]
+font = ("DejaVu Sans", 25)
+peakAttr = ["PeakCenter", "FWHM", "Area", "Intensity", "NormInt"]
+ops = {'P2-P1': lambda a, b: a - b, 'P2/P1': lambda a, b: a / b}
 
 class AltresMags:
     def __init__(self, pics, magnituds, operacio):
@@ -67,29 +70,202 @@ class PintaMapesInterficie:
 
         self.color = {"PeakCenter": "viridis", 
                       "FWHM": "cividis",
-                      "Intensity": 'calent',
                       "Area": "inferno",
-                      "NormInt": 'calent'}
+                      "Intensity": 'Spectra',
+                      "NormInt": 'Spectra'}
         
         nomsFmapes = tk.filedialog.askopenfilenames(filetypes = [("AIST", "*.aist"), ("TXT", "*.txt")])
         self.nomsMapes = {Path(nom).stem: Path(nom) for nom in nomsFmapes}
-
         nomsLlista = list(self.nomsMapes.keys())
         self.file = self.nomsMapes[nomsLlista[0]]
         self.folder = self.file.with_suffix('')
         self.format = self.file.suffix
+        self.label = {}; self.object = {}
 
-        self.marcTop = Frame(self.root)
-        self.marcTop.grid(row=0, column=0, sticky = 'e')
+        marcTop = tk.Frame(self.root)
+        marcTop.grid(row = 0, column = 0, sticky = 'ew')
+        
+        self.label['file'] = tk.Label(marcTop, text = 'Fitxer:')
+        self.label['file'].grid(row = 0, column = 2, pady = 5, padx = 10, sticky = 'e')
+        self.object['file'] = ttk.Combobox(marcTop, textvariable = tk.StringVar(self.root, value = nomsLlista[0]), values = nomsLlista, state = 'readonly', width = 30)
+        self.object['file'].grid(row=0, column = 3, pady = 5, padx = 0, columnspan = 10, sticky = 'w')
+        self.object['file'].bind("<<ComboboxSelected>>", self.change_map)
+        self.object['file'].current(0)
+        
+        opcionsMap = ["Intensitat", "Pics", "P2-P1", "P2/P1", *VectorExtraMags.keys()]
+        self.nommap = opcionsMap[0]
+        self.label['map'] = tk.Label(marcTop, text = 'Mapa:')
+        self.label['map'].grid(row = 1, column = 1, pady = 10, padx = 10, sticky = 'e')
+        self.object['map'] = ttk.Combobox(marcTop, textvariable = tk.StringVar(self.root, value = self.nommap), values = opcionsMap, state = 'readonly', width = 8)
+        self.object['map'].grid(row = 1, column = 2, pady = 10, padx = 0, sticky = 'w')
+        self.object['map'].bind("<<ComboboxSelected>>", lambda event: self.plt_map(event, attr = 'nommap'))
+        self.object['map'].current(0)
+        
+        self.label['fits'] = tk.Label(marcTop, text = 'Ajust:')
+        self.label['fits'].grid(row = 1, column = 3, pady = 10, padx = 10, sticky = 'e')
+        self.object['fits'] = ttk.Combobox(marcTop, textvariable = tk.StringVar(self.root, value = []), values = [], state = 'readonly', width = 12)
+        self.object['fits'].grid(row = 1, column = 4, pady = 10, padx = 0, sticky = 'w')
+        self.object['fits'].bind("<<ComboboxSelected>>", lambda event: self.plt_map(event, attr = 'nomfit'))
+        
+        self.label['pic1'] = tk.Label(marcTop, text = 'P1:', width = 3)
+        self.label['pic1'].grid(row = 1, column = 5, pady = 10, padx = 5, sticky = 'e')
+        self.object['pic1'] = ttk.Combobox(marcTop, textvariable = tk.StringVar(self.root, value = []), values = [], state = 'readonly', width = 5)
+        self.object['pic1'].grid(row = 1, column = 6, pady = 10, padx = 0, sticky = 'w')
+        self.object['pic1'].bind("<<ComboboxSelected>>", lambda event: self.plt_map(event, attr = 'pic1'))
+        
+        self.label['pic2'] = tk.Label(marcTop, text = 'P2:', width = 3)
+        self.label['pic2'].grid(row = 1, column = 7, pady = 10, padx = 5, sticky = 'e')
+        self.object['pic2'] = ttk.Combobox(marcTop, textvariable = tk.StringVar(self.root, value = []), values = [], state = 'readonly', width = 5)
+        self.object['pic2'].grid(row = 1, column = 8, pady = 10, padx = 0, sticky = 'w')
+        self.object['pic2'].bind("<<ComboboxSelected>>", lambda event: self.plt_map(event, attr = 'pic2'))
+        
+        self.nommag = "Intensity"
+        self.label['mag'] = tk.Label(marcTop, text = 'Magnitud:')
+        self.label['mag'].grid(row = 1, column = 12, pady = 10, padx = 10)
+        self.object['mag'] = ttk.Combobox(marcTop, textvariable = tk.StringVar(self.root, value = self.nommag), values = [self.nommag], state = 'readonly', width = 10)
+        self.object['mag'].grid(row = 1, column = 13, pady = 10, padx = 0)
+        self.object['mag'].bind("<<ComboboxSelected>>", lambda event: self.plt_map(event, attr = 'nommag'))
+        self.object['mag'].current(0)
+        
+        marcTop.grid_columnconfigure(0, minsize = 200)
+        marcTop.grid_columnconfigure(9, minsize = 100)
+        
+        marcTrack = tk.Frame(self.root)
+        marcTrack.grid(row = 1, column = 0, sticky = 'ew')
+        
+        self.label['track_map'] = tk.Label(marcTrack, text = default_text_map)
+        self.label['track_map'].grid(row = 0, column = 1, columnspan = 6)
+        
+        self.label['track_spec'] = tk.Label(marcTrack, text = default_text_spec)
+        self.label['track_spec'].grid(row = 0, column = 8, columnspan = 4)
+        
+        marcTrack.grid_columnconfigure(0, minsize = 200)
+        marcTrack.grid_columnconfigure(7, minsize = 200)
+        
+        set_valuex = tk.IntVar(marcTrack, value = '')
+        self.label['track_x'] = tk.Label(marcTrack, text = 'X:', width = 3)
+        self.label['track_x'].grid(row = 1, column = 1, pady = 10, padx = 5, sticky = 'e')
+        self.object['track_x'] = tk.Entry(marcTrack, textvariable=set_valuex, state = 'readonly', width = 3)
+        self.object['track_x'].grid(row = 1, column = 2, pady = 10, padx = 0, sticky = 'w')
+        self.object['track_x'].value = set_valuex
+        
+        set_valuey = tk.IntVar(marcTrack, value = '')
+        self.label['track_y'] = tk.Label(marcTrack, text = 'Y:', width = 3)
+        self.label['track_y'].grid(row = 1, column = 3, pady = 10, padx = 5, sticky = 'e')
+        self.object['track_y'] = tk.Entry(marcTrack, textvariable=set_valuey, state = 'readonly', width = 3)
+        self.object['track_y'].grid(row = 1, column = 4, pady = 10, padx = 0, sticky = 'w')
+        self.object['track_y'].value = set_valuey
+        
+        set_valuez = tk.DoubleVar(marcTrack, value = '')
+        self.label['track_z'] = tk.Label(marcTrack, text = f'{self.nommag}:', width = 10)
+        self.label['track_z'].grid(row = 1, column = 5, pady = 10, padx = 5, sticky = 'e')
+        self.object['track_z'] = tk.Entry(marcTrack, textvariable=set_valuez, state = 'readonly', width = 10)
+        self.object['track_z'].grid(row = 1, column = 6, pady = 10, padx = 0, sticky = 'w')
+        self.object['track_z'].value = set_valuez
+        
+        set_valuexax = tk.IntVar(marcTrack, value = '')
+        self.label['track_xaxis'] = tk.Label(marcTrack, text = 'λ (nm)', width = 6)
+        self.label['track_xaxis'].grid(row = 1, column = 8, pady = 10, padx = 5, sticky = 'e')
+        self.object['track_xaxis'] = tk.Entry(marcTrack, textvariable=set_valuexax, state = 'readonly', width = 5)
+        self.object['track_xaxis'].grid(row = 1, column = 9, pady = 10, padx = 0, sticky = 'w')
+        self.object['track_xaxis'].value = set_valuexax
+        
+        set_valueyax = tk.IntVar(marcTrack, value = '')
+        self.label['track_yaxis'] = tk.Label(marcTrack, text = 'Intensity (uA):', width = 10)
+        self.label['track_yaxis'].grid(row = 1, column = 10, pady = 10, padx = 5, sticky = 'e')
+        self.object['track_yaxis'] = tk.Entry(marcTrack, textvariable=set_valueyax, state = 'readonly', width = 5)
+        self.object['track_yaxis'].grid(row = 1, column = 11, pady = 10, padx = 0, sticky = 'w')
+        self.object['track_yaxis'].value = set_valueyax
 
-        self.header = GestorHeaderRAMAN(self, self.marcTop)
-        self.label = self.header.view.label
-        self.object = self.header.view.object
-        self.nommap = self.object['map'].get()
-        self.nommag = self.object['mag'].get()
-        self.spec_type = self.object['spec_type'].get()
+        marcLims = tk.Frame(self.root)
+        marcLims.grid(row = 2, column = 0, sticky = "nsew")
+        
+        set_valueCM = tk.DoubleVar(marcLims, value = 'hot')
+        self.label['cmap'] = tk.Label(marcLims, text = 'Color:', width = 5)
+        self.label['cmap'].grid(row = 0, column = 1, pady = 10, padx = 5, sticky = 'e')
+        self.object['cmap'] =  ttk.Combobox(marcLims, textvariable = set_valueCM, values = cmaps_matplotlib, state = 'readonly', width = 8)
+        self.object['cmap'].grid(row = 0, column = 2, pady = 10, padx = 0, sticky = 'w')
+        self.object['cmap'].bind("<<ComboboxSelected>>", self.new_cmap)
+        self.object['cmap'].value = set_valueCM
+
+        set_valueMS = tk.DoubleVar(marcLims, value = '')
+        self.label['map_limSup'] = tk.Label(marcLims, text = 'Límit superior:', width = 12)
+        self.label['map_limSup'].grid(row = 0, column = 3, pady = 10, padx = 5, sticky = 'e')
+        self.object['map_limSup'] = tk.Entry(marcLims, textvariable=set_valueMS, width = 6)
+        self.object['map_limSup'].grid(row = 0, column = 4, pady = 10, padx = 0, sticky = 'w')
+        self.object['map_limSup'].bind('<Return>', lambda e: self.map_lims(e, lim = 'Sup'))
+        self.object['map_limSup'].value = set_valueMS
+        
+        set_valueMI = tk.DoubleVar(marcLims, value = '')
+        self.label['map_limInf'] = tk.Label(marcLims, text = 'Límit inferior:', width = 12)
+        self.label['map_limInf'].grid(row = 1, column = 3, pady = 10, padx = 5, sticky = 'e')
+        self.object['map_limInf'] = tk.Entry(marcLims, textvariable=set_valueMI, width = 6)
+        self.object['map_limInf'].grid(row = 1, column = 4, pady = 10, padx = 0, sticky = 'w')
+        self.object['map_limInf'].bind('<Return>', lambda e: self.map_lims(e, lim = 'Inf'))
+        self.object['map_limInf'].value = set_valueMI
+        
+        set_valueL = tk.DoubleVar(marcLims, value = '')
+        self.label['laser'] = tk.Label(marcLims, text = 'λ₀ (nm):', width = 7)
+        self.label['laser'].grid(row = 0, column = 6, pady = 10, padx = 5, sticky = 'e')
+        self.object['laser'] = tk.Entry(marcLims, textvariable=set_valueL, width = 6, state = 'readonly')
+        self.object['laser'].grid(row = 0, column = 7, pady = 10, padx = 0, sticky = 'w')
+        self.object['laser'].value = set_valueL
+        
+        self.spec_type = 'nm'
+        set_valueST = tk.DoubleVar(marcLims, value = 'nm')
+        self.label['spec_type'] = tk.Label(marcLims, text = 'Unitats:', width = 7)
+        self.label['spec_type'].grid(row = 1, column = 6, pady = 10, padx = 5, sticky = 'e')
+        self.object['spec_type'] =  ttk.Combobox(marcLims, textvariable = set_valueST, values = ['nm', 'eV', '1/cm'], state = 'readonly', width = 4)
+        self.object['spec_type'].grid(row = 1, column = 7, pady = 10, padx = 0, sticky = 'w')
+        self.object['spec_type'].bind("<<ComboboxSelected>>", self.new_spectype)
+        self.object['spec_type'].value = set_valueST
+        
         self.lims = {}
+        set_valueLeft = tk.DoubleVar(marcLims, value = 0)
+        self.label['spec_xaxis'] = tk.Label(marcLims, text = 'Eix X:', width = 6)
+        self.label['spec_xaxis'].grid(row = 0, column = 8, pady = 10, padx = 5, sticky = 'e')
+        self.object['spec_left'] = tk.Entry(marcLims, textvariable=set_valueLeft, width = 6)
+        self.object['spec_left'].grid(row = 0, column = 9, pady = 10, padx = 0, sticky = 'w')
+        self.object['spec_left'].bind('<Return>', lambda e: self.set_speclims(e, key = 'spec_left'))
+        self.object['spec_left'].value = set_valueLeft
 
+        set_valueRight = tk.DoubleVar(marcLims, value = 1)
+        self.object['spec_right'] = tk.Entry(marcLims, textvariable=set_valueRight, width = 6)
+        self.object['spec_right'].grid(row = 0, column = 10, pady = 10, padx = 0, sticky = 'w')
+        self.object['spec_right'].bind('<Return>', lambda e: self.set_speclims(e, key = 'spec_right'))
+        self.object['spec_right'].value = set_valueRight
+
+        set_valueBot = tk.DoubleVar(marcLims, value = 0)
+        self.label['spec_yaxis'] = tk.Label(marcLims, text = 'Eix Y:', width = 6)
+        self.label['spec_yaxis'].grid(row = 1, column = 8, pady = 10, padx = 5, sticky = 'e')
+        self.object['spec_bot'] = tk.Entry(marcLims, textvariable=set_valueBot, width = 6)
+        self.object['spec_bot'].grid(row = 1, column = 9, pady = 10, padx = 0, sticky = 'w')
+        self.object['spec_bot'].bind('<Return>', lambda e: self.set_speclims(e, key = 'spec_bot'))
+        self.object['spec_bot'].value = set_valueBot
+
+        set_valueTop = tk.DoubleVar(marcLims, value = 1)
+        self.object['spec_top'] = tk.Entry(marcLims, textvariable=set_valueTop, width = 6)
+        self.object['spec_top'].grid(row = 1, column = 10, pady = 10, padx = 0, sticky = 'w')
+        self.object['spec_top'].bind('<Return>', lambda e: self.set_speclims(e, key = 'spec_top'))
+        self.object['spec_top'].value = set_valueTop
+
+        set_valueDades = tk.BooleanVar(marcLims, value = True)
+        self.object['spec_data'] = tk.Checkbutton(marcLims, text="Dades", variable=set_valueDades, command=self.mostrar_dades, indicatoron = True)
+        self.object['spec_data'].grid(row = 0, column = 11, pady = 10, padx = 5, sticky = 'e')
+        self.object['spec_data'].value = set_valueDades
+
+        set_valueBkg = tk.BooleanVar(marcLims, value = True)
+        self.object['spec_bkg'] = tk.Checkbutton(marcLims, text="Fons", variable=set_valueBkg, command=self.plot_spec, indicatoron = True)
+        self.object['spec_bkg'].grid(row = 1, column = 11, pady = 10, padx = 5, sticky = 'e')
+        self.object['spec_bkg'].value = set_valueBkg
+
+        set_valueEtiq = tk.BooleanVar(marcLims, value = True)
+        self.object['spec_etiq'] = tk.Checkbutton(marcLims, text="Etiquetes", variable=set_valueEtiq, command=self.set_etiqs, indicatoron = True)
+        self.object['spec_etiq'].grid(row = 1, column = 12, pady = 10, padx = 5, sticky = 'e')
+        self.object['spec_etiq'].value = set_valueEtiq
+        
+        marcLims.grid_columnconfigure(0, minsize = 200)
+        marcLims.grid_columnconfigure(5, minsize = 100)
         plt.rcParams["font.size"]=18
         self.fig, self.ax = plt.subplots(nrows=1, ncols=2)
 
@@ -121,7 +297,7 @@ class PintaMapesInterficie:
         
         self.zoom = InteraccioFigura(self.ax[0], self.image, self.scale, self.cax, self.mida)
 
-        marcBot = Frame(self.root)
+        marcBot = tk.Frame(self.root)
         marcBot.grid(row = 4, column = 0, sticky = 'ew')
 
         self.object['button1'] = tk.Button(marcBot, text="Dibuixa histograma", command=self.plot_hist)
@@ -130,11 +306,8 @@ class PintaMapesInterficie:
         self.object['button2'] = tk.Button(marcBot, text="Guarda espectre", command=self.save_spec)
         self.object['button2'].grid(row = 0, column = 3, pady = 5, padx = 100)
 
-        self.object['button3'] = tk.Button(marcBot, text="Ajustar espectre", command=lambda: FitSpec(self, self.specs[self.spec_type].xdata, self.I))
+        self.object['button3'] = tk.Button(marcBot, text="Eixir", command=self.root.quit)
         self.object['button3'].grid(row = 0, column = 4, pady = 5, padx = 100)
-
-        self.object['button4'] = tk.Button(marcBot, text="Eixir", command=self.root.quit)
-        self.object['button4'].grid(row = 0, column = 5, pady = 5, padx = 100)
         
         self.canvas.draw()
         
@@ -144,6 +317,46 @@ class PintaMapesInterficie:
         self.plt_map()
         self.canvas.get_tk_widget().focus_force()
         self.root.mainloop()
+
+    def map_lims(self, event, lim = 'Inf'):
+        match lim:
+            case 'Inf': self.limInf = float(event.widget.get())
+            case 'Sup': self.limSup = float(event.widget.get())
+
+        lims = self.limInf, self.limSup
+        mapa.update_cbar(self.cax, lims, units = self.specs[self.spec_type].units[self.nommag] if not self.nommap == 'Ràtio (P2/P1)' else '')
+        self.image.set_clim(*lims)
+        self.canvas.draw()
+    
+    def mostrar_dades(self):
+        if not hasattr(self, 'dades'):
+            return
+
+        self.dades.set_visible(self.object['spec_data'].value.get())
+        self.canvas.draw_idle()
+        
+    def new_spectype(self, event):
+        self.spec_type = event.widget.get()
+        self.label['track_xaxis'].configure(text = self.specs[self.spec_type].xtitle)
+        if not hasattr(self, 'posx') or not hasattr(self, 'posy'): return
+        self.lims = {}
+        self.plot_spec()
+    
+    def set_etiqs(self):
+        if not hasattr(self, 'etiquette'): return
+        
+        for element in self.etiquette.values(): element.set_visible(self.object['spec_etiq'].value.get())
+        self.canvas.draw_idle()
+        
+    def set_speclims(self, event, key):
+        self.lims[key] = float(event.widget.get())
+        self.ax[1].set_xlim(self.lims['spec_left'], self.lims['spec_right'])
+        self.ax[1].set_ylim(self.lims['spec_bot'], self.lims['spec_top'])
+        self.canvas.draw()
+
+    def new_cmap(self, event):
+        self.image.set_cmap(event.widget.get())
+        self.canvas.draw()
 
     def _trigger_resize(self, event):
         # Cancel·lar el timer del resize ràpid del canal actiu
@@ -167,10 +380,19 @@ class PintaMapesInterficie:
         self.plt_map()
 
     def new_file(self):
-        xdata, self.spectra, self.N, self.mida, self.laser, _ = open_file([self.file], self.format)
+        file = open_file(self.format, file_list = [self.file], fileclass = FileData)
+
+        channel = file.channel
+        self.N = file.N
+        self.mida = file.midaBase
+        self.laser = file.laser
+
+        channel = channel['Spectra']
+        xdata = channel.xdata
+        self.spectra = channel.spectra
         Nx, Ny = self.N
 
-        self.IntInt = np.nansum(self.spectra, axis=1).reshape(Ny, Nx)
+        self.IntInt = np.nansum(self.spectra, axis=2).reshape(Ny, Nx)
         self.Z = self.IntInt.copy()
         self.limInf, self.limSup = lims_outliers(self.Z)
         self.object['laser'].value.set(self.laser)
@@ -181,7 +403,12 @@ class PintaMapesInterficie:
         
         if not Path(self.folder).exists() or next(Path(self.folder).glob("*.txt")) is StopIteration: return
 
+        print('Passa')
         self.fits = {}
+        self.rangfit = {}
+        self.fit_start = {}
+        self.fit_end = {}
+
         for file in sorted(Path(self.folder).glob("*.txt")):
             if file.name.endswith("_params.txt"): continue
 
@@ -197,12 +424,12 @@ class PintaMapesInterficie:
                         header[clau.strip()] = valor.strip()
 
             if not header['Nom'] in self.fits: self.fits[header['Nom']] = {}
-            dades = np.loadtxt(file, skiprows=2)
+            dades = np.loadtxt(file, skiprows=2, encoding="utf-8")
 
-            self.rangfit = [float(header['Inici']), float(header['Final'])]
+            self.rangfit[header['Nom']] = [float(header['Inici']), float(header['Final'])]
             units = header['Unitats']
-            self.fit_start, self.fit_end = sorted(find_nearest(xdata[units], self.rangfit))
-            xfit = xdata[units][self.fit_start:self.fit_end]
+            self.fit_start[header['Nom']], self.fit_end[header['Nom']] = sorted(find_nearest(xdata[units], self.rangfit[header['Nom']]))
+            xfit = xdata[units][self.fit_start[header['Nom']]:self.fit_end[header['Nom']]]
 
             if header['Pic'] == 'bkg':
                 nvars = dades.shape[1]
@@ -248,7 +475,7 @@ class PintaMapesInterficie:
             self.object['track_z'].value.set(float(f"{self.Z[y_pixel-1, x_pixel-1]:.2f}"))
 
         elif event.inaxes == self.ax[1]:
-            puntx = round(event.xdata, 2); punty = round(event.ydata)
+            puntx = round(event.xdata); punty = round(event.ydata)
 
             self.object['track_xaxis'].value.set(puntx)
             self.object['track_yaxis'].value.set(punty)
@@ -344,7 +571,7 @@ class PintaMapesInterficie:
         valors = self.Z[~np.isnan(self.Z)]
         self.limInf, self.limSup = lims_outliers(valors)
 
-        mapa.update_map(self.image, self.color[self.nommag], self.Z, (self.limInf, self.limSup), units, mida = self.mida, cbar = self.cax, interp = 'gaussian')
+        mapa.update_map(self.image, self.color[self.nommag], self.Z, (self.limInf, self.limSup), units, mida = self.mida, cbar = self.cax)
         self.zoom.midaBase = self.mida
         self.zoom._base_size()
         self.object['map_limInf'].value.set(self.limInf)
@@ -370,13 +597,14 @@ class PintaMapesInterficie:
         label = f'{self.nommag} ({units})'
         x0, x1, y0, y1 = self.limit_pixels()
         valors = self.Z[y0:y1, x0:x1].flatten()
+        valors = valors[np.isfinite(valors)]
 
         punts = np.linspace(self.limInf, self.limSup, 100)
         HistogramaMapa, limits = np.histogram(valors, bins = 15, range=[self.limInf, self.limSup], density=False)
 
         centres = (limits[:-1] + limits[1:]) / 2
         pas = 0.9 * (centres[1] - centres[0])
-        p_ini = [np.median(valors), np.percentile(valors, 75)-np.percentile(valors, 25), np.max(HistogramaMapa)]
+        p_ini = [np.median(valors), np.percentile(valors, 75) - np.percentile(valors, 25), np.max(HistogramaMapa)]
         limits = ([0, 0, 0], [+np.inf, +np.inf, +np.inf])
         
         #Gràfica histograma
@@ -384,11 +612,10 @@ class PintaMapesInterficie:
         ax2.bar(centres, HistogramaMapa, width=pas, fc='tab:blue',align="center")
         ax2.set(xlabel=label, ylabel='Frequency', title=f'{self.nommap} {self.nommag}')
         fig2.show()
-        
+
         print(f'Ajustant {self.nommap} {self.nommag}')
         try:
-            popt, pcov = scopt.curve_fit(gaussiana, centres, HistogramaMapa,\
-                p0=p_ini, bounds=limits)
+            popt, pcov = scopt.curve_fit(gaussiana, centres, HistogramaMapa, p0=p_ini, bounds=limits)
         except RuntimeError:
             print("\n\t\tERROR! L'ajust per mínims quadrats ha fallat.\n")
             return
@@ -408,19 +635,19 @@ class PintaMapesInterficie:
         self.etiquette = {}
         pos = self.posy - 1, self.posx - 1
         idx = pos[1] + pos[0] * self.N[0]
-        self.I = self.spectra[idx,:].copy()
+        self.I = self.spectra[*pos,:].copy()
         spec = self.specs[self.spec_type]
 
         if hasattr(self,'fits'): 
             fit = self.fits[self.nomfit]
-            xdata = spec.xdata[self.fit_start:self.fit_end]
+            xdata = spec.xdata[self.fit_start[self.nomfit]:self.fit_end[self.nomfit]]
             bkg = fit['bkg']
 
             if self.object['spec_bkg'].value.get(): 
                 bkgdata = fit['bkg'].data(pos)
             else: 
                 bkgdata = np.zeros_like(bkg.xfit)
-                self.I[self.fit_start:self.fit_end] -= fit['bkg'].data(pos)
+                self.I[self.fit_start[self.nomfit]:self.fit_end[self.nomfit]] -= fit['bkg'].data(pos)
         else: 
             bkgdata = np.zeros_like(spec.xdata)
             xdata = spec.xdata
@@ -454,10 +681,9 @@ class PintaMapesInterficie:
             case _:
                 for element in VectorExtraMags[self.nommap].pics:
                     self.etiquette[element] = plot_peak(xdata, self.ax[1], fit[element], bkgdata, pos)
-
+        
         self.dades, = self.ax[1].plot(spec.xdata, self.I, color = 'r', zorder=0)
         self.dades.set_visible(self.object['spec_data'].value.get())
-
         for element in self.etiquette.values(): element.set_visible(self.object['spec_etiq'].value.get())
         
         self.ax[1].set_title(f"{spec.name} spectrum X={self.posx} Y={self.posy}")

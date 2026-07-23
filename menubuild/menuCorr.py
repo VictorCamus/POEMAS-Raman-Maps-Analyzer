@@ -1,5 +1,4 @@
 import numpy as np
-from classes import diccionaris as dicc
 from window import BaseMapWindow
 from process import flatten as flat
 from .base import BaseMenu
@@ -121,5 +120,5 @@ class LevelMaps(BaseMapWindow):
 
         # --- FINAL ---
         self.z = z
-        self.lims, self.z = dicc.lims(self.z, ch.tipus)
+        self.lims, self.z = ch.set_lims(self.z, ch.name)
         self.update_fig(ch)

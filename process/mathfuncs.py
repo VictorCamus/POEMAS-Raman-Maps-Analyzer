@@ -11,31 +11,27 @@ def gaussian(x: float, x0: float, FWHM: float, A: float) -> float:
 def voigt(x, x0, sigma, gamma, A):
     return A * voigt_profile(x - x0, sigma, gamma)
 
+from scipy.stats import exponnorm
+
+def EMG(x, x0, FWHM, A, tau):
+    sigma = FWHM / (2 * np.sqrt(2 * np.log(2)))
+    # tau : float. Constant exponencial (>0).
+    K = tau / sigma
+
+    return A * exponnorm.pdf(x, K=K, loc=x0, scale=sigma)
+
 def constant(x: float, y0: float):
     return np.full_like(x, y0)
 
-Functions = {'G': gaussian, 'L': lorentz, 'V': voigt, 'C': constant}
+Functions = {'G': gaussian, 'L': lorentz, 'V': voigt, 'EMG': EMG, 'C': constant}
 
 FuncParams = {
     'G': ('x0', 'FWHM', 'A'),
     'L': ('x0', 'FWHM', 'A'),
     'V': ('x0', 'sigma', 'gamma', 'A'),
+    'EMG': ('x0', 'FWHM', 'A', 'tau'),
     'C': ('C',)
 }
-
-def linear_combination(names, funcs):
-    func_list = [Functions[f] for f in funcs]
-    pars_list = [FuncParams[f] for f in funcs]
-
-    def model(x, params):
-        y = np.zeros_like(x, dtype=float)
-        for name, func in zip(names, func_list):
-            pars = [params[f'{name}_{p}'].value for p in pars_list]
-            y += func(x, *pars)
-
-        return y
-
-    return model
 
 def linear_combination(names, funcs):
     func_list = [Functions[f] for f in funcs]
