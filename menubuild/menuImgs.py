@@ -3,6 +3,7 @@ import numpy as np
 
 from .base import BaseMenu
 from tkinter import messagebox
+from window.builder import BaseWindow
 
 class GestorImatges(BaseMenu): # Classe que gestiona les accions relacionades amb el zoom de les imatges.
     ordre = 10 # Atribut per a ordenar els menús (opcional)
@@ -81,66 +82,8 @@ class GestorImatges(BaseMenu): # Classe que gestiona les accions relacionades am
                 self._rotar(rot = rot, flip = flip, file=f)
 
     def _zoom_manual(self):
-        
-        def set_lims(left = None, right = None, bottom = None, top = None, file = None, axis = 'Eix X'): # Aplica la sincronització del zoom a tots els altres mapes.
-            if axis == 'Eix X':
-                l_ref, r_ref = file.zoom.xlims
-                if left is None: left = l_ref
-                if right is None: right = r_ref
-
-                if left < 0: 
-                    left = 0
-                    self.widgets[axis]["left"].value.set(left)
-                if right > file.midaBase[0]: 
-                    right = file.midaBase[0]
-                    self.widgets[axis]["right"].value.set(right)
-
-                if left >= right:
-                    messagebox.showerror("Límits del mapa",
-                    "El límit superior ha de ser major que l'inferior.")
-                    return
-                
-                file.zoom.xlims = (left, right)
-            
-            elif axis == 'Eix Y':
-                b_ref, t_ref = file.zoom.ylims
-                if bottom is None: bottom = b_ref
-                if top is None: top = t_ref
-                
-                if bottom < 0: 
-                    bottom = 0
-                    self.widgets[axis]["bottom"].value.set(bottom)
-                if top > file.midaBase[1]: 
-                    top = file.midaBase[1]
-                    self.widgets[axis]["top"].value.set(top)
-
-                if bottom >= top:
-                    messagebox.showerror(
-                    "Límits del mapa",
-                    "El límit superior ha de ser major que l'inferior."
-                    )
-                    return
-                
-                file.zoom.ylims = (bottom, top)
-            
-            file.zoom._resize()
-
         if not self.comprova_fitxer(): return
-        file = self.current_file
-
-        tabConfig = [
-            ("Eix X", file.zoom.xlims, set_lims, "left", "right"),
-            ("Eix Y", file.zoom.ylims, set_lims, "bottom", "top"),
-        ]
-
-        def _grid_lims(axis, getter, setter, lim_inf, lim_sup):
-            return [
-                # Estructura: ((var_name, var_type), (label, object), setter, {getter, **extra})
-                ((lim_inf, float, getter[0]), ("Límit inferior:", 'entry'), (setter, "kwargs", {'file': file, 'axis': axis})),
-                ((lim_sup, float, getter[1]), ("Límit superior:", 'entry'), (setter, "kwargs", {'file': file, 'axis': axis})),
-            ]
-        
-        self.widgets, _ = self.create_window("Editar eixos (Límits)", gridBuilder = _grid_lims, tabConfig = tabConfig)
+        ZoomManual(self)
     
     def _zoom_sync(self):
         if not self.comprova_fitxer(): return
@@ -157,3 +100,48 @@ class GestorImatges(BaseMenu): # Classe que gestiona les accions relacionades am
         if not self.comprova_fitxer(): return
         file = self.current_file
         file.zoom._base_size()
+
+class ZoomManual(BaseWindow):
+    def __init__(self, parent):
+        super().__init__(parent, "Canviar límits")
+
+    def set_lims(self, left = None, right = None, bottom = None, top = None): # Aplica la sincronització del zoom.
+        left = self.file.zoom.xlims[0] if left is None else left
+        right = self.file.zoom.xlims[1] if right is None else right
+
+        xlims =  self.validar(left, right, self.file.midaBase[0], self.widgets["left"], self.widgets["right"])
+        if xlims is None: return
+
+        bottom = self.file.zoom.ylims[0] if bottom is None else bottom
+        top = self.file.zoom.ylims[1] if top is None else top
+
+        ylims = self.validar(bottom, top, self.file.midaBase[1], self.widgets["bottom"], self.widgets["top"])
+        if ylims is None: return
+
+        self.file.zoom.xlims = xlims
+        self.file.zoom.ylims = ylims
+
+        self.file.zoom._resize()
+
+    def _grid(self):
+        return [
+            # Estructura: ((var_name, var_type), (label, object), setter, {getter, **extra})
+            (("left", float, self.file.zoom.xlims[0]), ("Left (Eix X):", 'entry'), (self.set_lims, "kwargs")),
+            (("right", float, self.file.zoom.xlims[1]), ("Right (Eix X):", 'entry'), (self.set_lims, "kwargs")),
+            (("bottom", float, self.file.zoom.ylims[0]), ("Bottom (Eix Y):", 'entry'), (self.set_lims, "kwargs")),
+            (("top", float, self.file.zoom.ylims[1]), ("Top (Eix Y):", 'entry'), (self.set_lims, "kwargs")),
+        ]
+
+    @staticmethod
+    def validar(lim_inf, lim_sup, mida, widgets_inf, widgets_sup):
+        lim_inf = max(0, lim_inf)
+        lim_sup = min(mida, lim_sup)
+
+        widgets_inf.value.set(lim_inf)
+        widgets_sup.value.set(lim_sup)
+
+        if lim_inf >= lim_sup:
+            messagebox.showerror("Límits del mapa", "El límit superior ha de ser major que l'inferior.")
+            return None
+
+        return lim_inf, lim_sup

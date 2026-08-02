@@ -153,7 +153,8 @@ class InteraccioFigura:
 
     def _base_size(self, event = None):
         self.xylims = ((0, self.midaBase[0]), (0, self.midaBase[1]))
-    
+        self._resize()
+        
     @property
     def xlims(self):
         return self.axis.get_xlim()

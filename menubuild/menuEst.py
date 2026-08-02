@@ -1,4 +1,4 @@
-from tkinter import Button, filedialog
+from tkinter import Button, filedialog, Frame
 from window import BaseFigureWindow
 from pathlib import Path
 import numpy as np
@@ -29,13 +29,14 @@ class Histogrames(BaseFigureWindow):
         
         self.mode = "Hist"
         self.actualitza_plot()
-        
-        self.fig_frame.grid(row=14, column=2, pady=10)
 
-        btn_prev = Button(self.fig_frame, text="◀", command = self.toggle_plot, font=("Arial", 16))
+        buttons = Frame(self.fig_frame)
+        buttons.pack(anchor="center", pady=5)
+
+        btn_prev = Button(buttons, text="◀", command = self.toggle_plot, font=("Arial", 16))
         btn_prev.pack(side="left", padx=2)
 
-        btn_next = Button(self.fig_frame, text="▶", command = self.toggle_plot, font=("Arial", 16))
+        btn_next = Button(buttons, text="▶", command = self.toggle_plot, font=("Arial", 16))
         btn_next.pack(side="left", padx=2)
         
     def plot_file(self, value):
@@ -54,8 +55,8 @@ class Histogrames(BaseFigureWindow):
             case "Hist": self.ax.set_xlim(self.lims)
             case "Box": self.ax.set_ylim(self.lims)
         
-        self.fig.tight_layout()
-        self.fig.canvas.draw_idle()
+        self.figure.tight_layout()
+        self.figure.canvas.draw_idle()
         
     def plot_remove(self):
         match self.mode:
@@ -68,7 +69,7 @@ class Histogrames(BaseFigureWindow):
             case "Box": 
                 for element in self.plot['boxes']: element.set_facecolor(value)
         
-        self.fig.canvas.draw()
+        self.figure.canvas.draw()
     
     def toggle_plot(self):
         self.plot_remove()
@@ -85,20 +86,20 @@ class Histogrames(BaseFigureWindow):
             case "Hist": self.plot, self.hist_data, _ = hist(self.ax, self.data, self.lims, xlabel=self.channel.ax_title, color=color)
             case "Box": self.plot = boxplot(self.ax, self.data, self.lims, name=self.channel.name, ylabel=self.channel.ax_title, color=color)
 
-        self.fig.tight_layout()
-        self.fig.tight_layout()
-        self.fig.canvas.draw_idle()
+        self.figure.tight_layout()
+        self.figure.tight_layout()
+        self.figure.canvas.draw_idle()
     
     def guardar(self, value):
         ruta = filedialog.asksaveasfilename(
-            parent = self.win_notebook,
+            parent = self.main_frame,
             defaultextension=".png",
             initialfile=f"{self.file.name} - {self.channel.name} {self.mode}.png",
             filetypes=[("PNG", "*.png")]
         )
 
         if ruta: 
-            self.fig.savefig(ruta)
+            self.figure.savefig(ruta)
             p = Path(ruta)
             txt_ruta = p.with_name(f"{self.file.name} - {self.channel.name} Data.txt")
 
@@ -178,8 +179,6 @@ class DirectionMean(BaseFigureWindow):
         self.ax.set_xlabel(r'Length ($\mu$m)')
         self.ax.set_ylabel(self.channel.ax_title)
         self.set_widgets()
-        
-        self.fig_frame.grid(row=14, column=2, pady=10)
 
     def plot_file(self, value):
         if value != 'Tots els fitxers': self.file = value
@@ -201,8 +200,8 @@ class DirectionMean(BaseFigureWindow):
         if sup is not None: self.lims = (self.lims[0], sup)
 
         self.ax.set_ylim(self.lims)
-        self.fig.tight_layout()
-        self.fig.canvas.draw_idle()
+        self.figure.tight_layout()
+        self.figure.canvas.draw_idle()
     
     def direction(self, value):
         self._direction = value
@@ -225,18 +224,18 @@ class DirectionMean(BaseFigureWindow):
         
     def plot_color(self, value):
         self.plot.set_color(value)
-        self.fig.canvas.draw()
+        self.figure.canvas.draw()
     
     def guardar(self, value):
         ruta = filedialog.asksaveasfilename(
-            parent = self.win_notebook,
+            parent = self.main_frame,
             defaultextension=".png",
             initialfile=f"{self.widgets['file'].value.get()} - {self.widgets['channel'].value.get()} Mitjana.png",
             filetypes=[("PNG", "*.png")]
         )
 
         if ruta: 
-            self.fig.savefig(ruta)
+            self.figure.savefig(ruta)
             p = Path(ruta)
             np.savetxt(f"{p.parent}/{p.stem}.txt", np.column_stack((self.xval, self.mean)), fmt="%.4f")
 
@@ -277,9 +276,9 @@ class DirectionMean(BaseFigureWindow):
 
         self.plot.set_data(self.xval, self.mean)
 
-        self.fig.tight_layout()
-        self.fig.tight_layout()
-        self.fig.canvas.draw_idle()
+        self.figure.tight_layout()
+        self.figure.tight_layout()
+        self.figure.canvas.draw_idle()
 
     def _grid(self):
         files = ['Tots els fitxers'] + list(self.files.keys())

@@ -50,7 +50,7 @@ class RescaleMaps(BaseMapWindow):
                 self.z = (self.z-zMin)/(zMax-zMin)
                 self.lims = [0, 1]
         
-        self.update_fig(ch)
+        self.update_fig()
 
 class LevelMaps(BaseMapWindow):
     def __init__(self, gestor):
@@ -121,4 +121,4 @@ class LevelMaps(BaseMapWindow):
         # --- FINAL ---
         self.z = z
         self.lims, self.z = ch.set_lims(self.z, ch.name)
-        self.update_fig(ch)
+        self.update_fig()

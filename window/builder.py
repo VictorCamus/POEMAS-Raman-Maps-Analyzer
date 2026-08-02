@@ -1,8 +1,10 @@
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from tkinter import Frame
+from tkinter import Toplevel
+from tkinter.ttk import Frame
 from drawing import mapdraw as map
 from drawing.plots import base_plot
 from process.images import copy_figure
+from window.labels import build_grid
 
 # Arxiu que gestiona els builders principals dels menús de l'aplicació, així com les finestres i funcionalitats comunes a tots els builders.
 
@@ -18,8 +20,16 @@ class BaseWindow:
         self._file_ref = None
         self.intersect = True
         self.update = True
-        
-        self.widgets, self.win_notebook = gestor.create_window(title, gridBuilder = self._grid, button = False)
+
+        window = Toplevel(gestor.root)
+        window.title(title)
+        self.main_frame = Frame(window)
+        self.main_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        self.control_frame = Frame(self.main_frame)
+        self.control_frame.pack(side="left", fill="y", expand=True, padx=10, pady=10)
+
+        self.widgets = build_grid(self.control_frame, self._grid(), button = False)
     
     @property
     def file(self):
@@ -110,7 +120,19 @@ class BaseWindow:
         else:
             comboCh.set("")
             return
-        
+
+    @staticmethod
+    def _init_figure(main_frame, figure):
+        frame = Frame(main_frame)
+        frame.pack(side='right', fill="both", expand=True)
+        frame.bind("<Control-c>", lambda e: copy_figure(figure))
+
+        canvas = FigureCanvasTkAgg(figure, master=frame)
+        canvas.get_tk_widget().pack(fill="both", expand=True)
+        canvas.draw()
+
+        return frame, canvas
+
 class BaseMapWindow(BaseWindow):
     def __init__(self, gestor, nom):
         super().__init__(gestor, nom)
@@ -119,7 +141,9 @@ class BaseMapWindow(BaseWindow):
         ch = self.channel
         self.lims = ch.lims
         self.z = ch.Z
-        self.figure, self.axis, self.image, self.cbar = map.create_map(ch.color.cmap, ch.Z,self.lims, ch.units, self.file.midaBase, ch.color.lims)
+        self.units = ch.units
+
+        self.figure, self.axis, self.image, self.cbar = map.create_map(ch.color.cmap, self.z, self.lims, self.units, self.file.midaBase, ch.color.lims)
         w, h = self.figure.get_size_inches()   # mida actual
 
         factor = 0.8
@@ -129,15 +153,14 @@ class BaseMapWindow(BaseWindow):
         self.figure.subplots_adjust(left=0.02, right=0.8, top=1, bottom=0)
         
         self.image.set_clim(self.lims)
-        
-        self.canvas = FigureCanvasTkAgg(self.figure, master=self.win_notebook)
-        self.canvas.get_tk_widget().grid(row=0, column=2, rowspan = 5)
+
+        self.fig_frame, self.canvas = self._init_figure(self.main_frame, self.figure)
         self.canvas.get_tk_widget().config(bg='#2e2e2e', highlightthickness=0, bd=0)
         
         rect = self.file.midaBase[1]/self.file.midaBase[0]
         dimensions = map.get_dimensions(self.axis, rect)
         map.set_dimensions(self.canvas, self.escala, self.cbar, rect, *dimensions)
-        
+
     def file_changed(self, value):
         self.file = value
         self.channel_changed(self.widgets['channel'].get())
@@ -156,7 +179,8 @@ class BaseMapWindow(BaseWindow):
         ch = self.file.channel[value]
         self.z = ch.Z
         self.lims = ch.lims
-        
+        self.units = ch.units
+
         self.cbar.limInf.set_color(ch.color.limInf)
         self.cbar.limSup.set_color(ch.color.limSup)
 
@@ -165,13 +189,13 @@ class BaseMapWindow(BaseWindow):
         self.image.set_clim(ch.lims)
         self.canvas.draw_idle()
     
-    def update_fig(self, ch):
+    def update_fig(self):
         self.image.set_data(self.z)
         self.image.set_clim(*self.lims)
         self.image.set_clim(*self.lims)
         
-        self.cbar.limInf.set_text(f'{self.lims[0]} {ch.units}')
-        self.cbar.limSup.set_text(f'{self.lims[1]} {ch.units}')
+        self.cbar.limInf.set_text(f'{self.lims[0]} {self.units}')
+        self.cbar.limSup.set_text(f'{self.lims[1]} {self.units}')
         self.canvas.draw_idle() 
         
     def aplicar(self, value):
@@ -191,14 +215,7 @@ class BaseFigureWindow(BaseWindow):
     def __init__(self, gestor, nom, dim=(4,4)):
         super().__init__(gestor, nom)
 
-        self.fig, self.ax = base_plot(dim=dim)
-        self.fig.tight_layout()
+        self.figure, self.ax = base_plot(dim=dim)
+        self.figure.tight_layout()
 
-        self.canvas = FigureCanvasTkAgg(self.fig, master=self.win_notebook)
-        widget = self.canvas.get_tk_widget()
-        widget.grid(row=0, column=2, rowspan=14)
-
-        widget.bind("<Control-c>", lambda e: copy_figure(self.fig))
-
-        self.canvas.draw()
-        self.fig_frame = Frame(self.win_notebook)
+        self.fig_frame, self.canvas = self._init_figure(self.main_frame, self.figure)

@@ -5,7 +5,7 @@ import numpy as np
 
 from drawing.arrows import FletxaInteractiva
 from drawing.plots import base_plot
-from tkinter import messagebox, Button, filedialog
+from tkinter import messagebox, Button, filedialog, Frame
 from .base import BaseMenu
 from window import BaseFigureWindow
 from pathlib import Path
@@ -172,15 +172,16 @@ class MostrarPerfils(BaseFigureWindow):
         self.widgets['inf'].value.set(round(self.lims[0], 0))
         self.widgets['sup'].value.set(round(self.lims[1], 0))
 
-        self.fig_frame.grid(row=14, column=2, pady=10)
+        buttons = Frame(self.fig_frame)
+        buttons.pack(anchor="center", pady=5)
 
-        btn_prev = Button(self.fig_frame, text="◀", command = lambda: self.toggle_plot(k = - 1) , font=("Arial", 16)) 
+        btn_prev = Button(buttons, text="◀", command = lambda: self.toggle_plot(k = - 1) , font=("Arial", 16))
         btn_prev.pack(side="left", padx=2) 
         
-        btn_next = Button(self.fig_frame, text="▶", command = lambda: self.toggle_plot(k = 1), font=("Arial", 16)) 
+        btn_next = Button(buttons, text="▶", command = lambda: self.toggle_plot(k = 1), font=("Arial", 16))
         btn_next.pack(side="left", padx=4)
 
-        self.fig.tight_layout()
+        self.figure.tight_layout()
         self.canvas.draw_idle()
 
     @property
@@ -218,8 +219,8 @@ class MostrarPerfils(BaseFigureWindow):
 
         self.ax.set_ylim(self.lims)
         
-        self.fig.tight_layout()
-        self.fig.canvas.draw_idle()
+        self.figure.tight_layout()
+        self.figure.canvas.draw_idle()
     
     def toggle_plot(self, k = 0):
         if self.num == self.nprof:
@@ -232,16 +233,16 @@ class MostrarPerfils(BaseFigureWindow):
             for num, prof in self.file.profile.items(): _, _, self.line[num] = prof.plot(num, self.ax, self.channel.Z)
         else: _, _, self.line[self.num] = self.file.profile[self.num].plot(self.num, self.ax, self.channel.Z)
 
-        self.fig.tight_layout()
-        self.fig.tight_layout()
-        self.fig.canvas.draw_idle()
+        self.figure.tight_layout()
+        self.figure.tight_layout()
+        self.figure.canvas.draw_idle()
         self.set_widgets()
 
     def guardar(self, value):
         if self.num == self.nprof: text = f"{self.file.name} - {self.channel.name} Tots els perfils"
         else: text = f"{self.file.name} - {self.channel.name} Perfil {self.num+1}"
         ruta = filedialog.asksaveasfilename(
-            parent = self.win_notebook,
+            parent = self.main_frame,
             defaultextension=".png",
             initialfile=f"{text}.png",
             filetypes=[("PNG", "*.png")]
@@ -249,7 +250,7 @@ class MostrarPerfils(BaseFigureWindow):
 
         if not ruta: return 
 
-        self.fig.savefig(ruta)
+        self.ure.savefig(ruta)
         p = Path(ruta)
 
         for i, line in enumerate(self.line.values(), start=1):

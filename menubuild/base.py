@@ -1,9 +1,8 @@
 import threading
 from tkinter import Menu, messagebox, Toplevel, Label
-from tkinter.ttk import Frame, Notebook, Progressbar
+from tkinter.ttk import Frame, Progressbar
 from matplotlib.pyplot import close
 
-from window.labels import tab, build_grid
 from drawing.plots import base_plot
 
 class Condicions: # Mixin per a comprovar condicions abans d'executar accions.
@@ -66,22 +65,6 @@ class BaseMenu(Condicions):  # Classe base per a gestionar les accions comunes d
         channel = file.current_channel if file else None
         return file, channel
     
-    def create_window(self, title: str, gridBuilder: list[tuple] = None, tabConfig: list[tuple] = None, **extra):
-        window = Toplevel(self.root)
-        window.title(title)
-        notebook = Notebook(window)                                          
-        notebook.pack(fill="both", expand=True, padx=10, pady=10)
-        if tabConfig:
-            widgets = {}
-            for tabElement in tabConfig:
-                nom = tabElement[0]
-                grid = gridBuilder(*tabElement)
-                widgets[nom] = tab(notebook, grid, nom, **extra)  # Crea la pestanya amb la graella
-
-            return widgets, notebook
-        else:
-            return build_grid(notebook, gridBuilder(), **extra), notebook
-    
     def create_menu(self, etiqueta, menu, accions):
         submenu = Menu(menu, tearoff=0, font=('Helvetica', 12, 'bold'), bg='#2b2b2b', fg='#eeeeee', activebackground='#3a7ff6', activeforeground='#ffffff')
 
@@ -96,15 +79,9 @@ class BaseMenu(Condicions):  # Classe base per a gestionar les accions comunes d
             accelerator_text = None
             if tecla:
                 accelerator_text = tecla.replace("<", "").replace(">", "")
-
-            submenu.add_command(
-                label=text,
-                command=func,
-                accelerator=accelerator_text
-            )
-
-            if tecla:
                 self.root.bind(tecla, lambda event, f=func: f())
+
+            submenu.add_command(label=text, command=func, accelerator=accelerator_text)
 
         menu.add_cascade(label=etiqueta, menu=submenu)
 
