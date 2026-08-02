@@ -1,5 +1,5 @@
 import sys
-from tkinter import Tk, ttk, Menu
+from tkinter import Tk, ttk, Menu, TclError
 
 from menubuild import BuildMenu
 from drawing.colormap import load_colormaps
@@ -19,7 +19,8 @@ class Aplicacio: # Classe principal de l'aplicació que gestiona la interfície 
         
         self._active_timer_id = None
         self._restants_timer_id = None
-        
+        self.drag_tab = None
+
         self.menu = Menu(root, bg="#121212", fg="white") # Crea un menú principal per a l'aplicació...
         self.gestors = BuildMenu(self)
         
@@ -37,7 +38,9 @@ class Aplicacio: # Classe principal de l'aplicació que gestiona la interfície 
         self.root.bind_all("<Left>", self._next_tab_file_prev)
 
         self.notebook.bind("<<NotebookTabChanged>>", self._on_file_changed)
-        
+        self.notebook.bind("<ButtonPress-1>", self._on_press)
+        self.notebook.bind("<B1-Motion>", self._on_drag)
+
     def _configurar_estil(self): # Configura l'estil de la interfície gràfica.
         style = ttk.Style()
         style.theme_use('clam') # Tema visual de l'aplicació
@@ -137,6 +140,42 @@ class Aplicacio: # Classe principal de l'aplicació que gestiona la interfície 
                 self.current_file = f
                 f.capçalera.set_channel(f.current_channel)
                 break
+
+    def _on_press(self, event):
+        try:
+            self.drag_tab = self.notebook.index(f"@{event.x},{event.y}")
+        except TclError:
+            self.drag_tab = None
+
+    def _on_drag(self, event):
+        if self.drag_tab is None: return
+
+        try:
+            target = self.notebook.index(f"@{event.x},{event.y}")
+        except TclError:
+            return
+
+        if target == self.drag_tab: return
+
+        # Mou la pestanya
+        self.notebook.insert(target, self.drag_tab)
+
+        # Reordena el diccionari de fitxers
+        keys = list(self.files.keys())
+        name = keys.pop(self.drag_tab)
+        keys.insert(target, name)
+
+        old_files = dict(self.files)
+        self.files.clear()
+
+        for k in keys:
+            self.files[k] = old_files[k]
+
+        # Actualitza l'índex que s'està arrossegant
+        self.drag_tab = target
+
+    def _on_release(self, event):
+        self.drag_tab = None
 
 def main():
     load_colormaps() # Carrega tots els mapes de colors possibles. Ho fem abans perquè així només es carrega una vegada.

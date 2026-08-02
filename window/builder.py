@@ -12,6 +12,7 @@ class BaseWindow:
     def __init__(self, gestor, title):
         self._file, self._channel = gestor.element_obert()
         self.files = gestor.files
+
         self.notebook = gestor.notebook
         self.label_inici = gestor.label_inici
 
@@ -88,12 +89,19 @@ class BaseWindow:
     def update_channels(self):
         if not hasattr(self, 'file') or not hasattr(self, 'widgets'): return
         if not "channel" in self.widgets: return
-        
+
         files = self.files_list()
-        
-        if self.intersect: channels = sorted(set.intersection(*(set(f.channel) for f in files))) # Obté els canals comuns a tots els fitxers
-        else: channels = sorted(set.union(*(set(f.channel) for f in files)))
-            
+        channels = list(files[0].channel)
+
+        if self.intersect:
+            common = set.intersection(*(set(f.channel) for f in files))
+            channels = [ch for ch in channels if ch in common]
+        else:
+            for f in files[1:]:
+                for ch in f.channel:
+                    if ch not in channels:
+                        channels.append(ch)
+
         self.update_channel_combobox(channels)
 
     def update_files(self, files):

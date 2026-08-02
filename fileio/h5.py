@@ -7,7 +7,8 @@ def load(file_list, fileclass):
     file = file_list[0]
     with h5py.File(file, "r") as f:
         if file.suffix.lower() == '.hdf5':
-            return {key: read_object(group, fileclass) for key, group in f.items()} # Et retorna tots els fitxers d'una.
+            order = list(f.attrs["file_order"])
+            return {key: read_object(f[key], fileclass) for key in order} # Et retorna tots els fitxers d'una.
 
         return read_object(f, fileclass)
 
@@ -28,7 +29,11 @@ def read_object(group, fileclass):
 
             if origin is dict:
                 key_type, value_type = args
-                data[name] = {key_type(key): read_object(obj[key], value_type) for key in obj}
+
+                if "order" in obj.attrs: keys = list(obj.attrs["order"])
+                else: keys = list(obj.keys())
+
+                data[name] = {key_type(key): read_object(obj[key], value_type) for key in keys}
 
             else: data[name] = read_object(obj, annotation) # Crea
 
@@ -40,6 +45,8 @@ def save(filename, file):
 
 def save_session(filename, files):
     with h5py.File(filename, "w") as f:
+        f.attrs["file_order"] = list(files.keys())
+
         for file in files.values():
             fg = f.create_group(file.name)
             save_object(fg, file)
@@ -54,6 +61,8 @@ def save_object(group, obj):
 
         elif isinstance(value, dict): # Si és un diccionari, crea un subgrup i un data-set per a cada entrada del diccionari.
             sub_dict = group.create_group(name)
+            sub_dict.attrs["order"] = list(map(str, value.keys()))
+
             for key, data in value.items():
                 key = str(key)
                 if is_dataclass(data): save_object(sub_dict.create_group(key), data)
