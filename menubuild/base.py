@@ -98,12 +98,7 @@ class BaseMenu(Condicions):  # Classe base per a gestionar les accions comunes d
         frame_barra = Frame(win)
         frame_barra.pack(fill="x", padx=20, pady=10)
 
-        progress = Progressbar(
-            frame_barra,
-            style="Green.Horizontal.TProgressbar",
-            mode="determinate"
-        )
-        
+        progress = Progressbar(frame_barra, style="Green.Horizontal.TProgressbar", mode="determinate")
         progress.pack(side="left", fill="x", expand=True)
 
         percent_label = Label(frame_barra, text="0 %", width=5)
@@ -134,5 +129,5 @@ class BaseMenu(Condicions):  # Classe base per a gestionar les accions comunes d
 
         label.config(text="Finalitzat ✔")
         win.after(500, win.destroy)
-        self.current_file.redraw()
+        self.current_file.view.map.refresh_map()
         close(fig)

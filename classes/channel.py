@@ -1,5 +1,5 @@
 import numpy as np
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from process.basics import truncar_significatives
 from CCD.correction import ccd_correct
@@ -7,17 +7,16 @@ from CCD.correction import ccd_correct
 @dataclass
 class ChannelData:  # Crea canals per a cada tipus de mapa dins d'un fitxer.
     name: str
-    Z: object = None
+    Z: np.ndarray | None = None
     units: str = None
     lims: list[float] = None
-    xdata: dict = None
-    spectra: object = None
+    xdata: dict = field(default_factory = dict)
+    spectra: np.ndarray = None
     spectra_lims: list[float] = None
     color: Colors = None
 
     def __post_init__(self):
         if self.color is None: self.color = Colors(self.name)
-        self.ax_title =f'{self.name} ({self.units})' if self.units else f'{self.name}'
 
         if self.Z is None and self.spectra is not None:
             self.spectra = ccd_correct(self.xdata['nm'], self.spectra)
@@ -25,6 +24,10 @@ class ChannelData:  # Crea canals per a cada tipus de mapa dins d'un fitxer.
             self.spectra_lims = [self.xdata['nm'][0], self.xdata['nm'][-1]]
 
         if self.lims is None: self.lims, self.Z = self.set_lims(self.Z, self.name)
+
+    @property
+    def ax_title(self):
+        return f'{self.name} ({self.units})' if self.units else f'{self.name}'
 
     @staticmethod
     def set_lims(z, name):

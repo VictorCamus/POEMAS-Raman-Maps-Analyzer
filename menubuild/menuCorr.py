@@ -97,7 +97,7 @@ class LevelMaps(BaseMapWindow):
     def apply_all(self):
         ch = self.file.channel[self.widgets['channel'].get()]
         z = ch.Z.copy()
-        N = np.copy(self.file.N)
+        N = np.copy(self.file.geometry.N)
         
         # --- LEVEL ---
         match self._level_mode:

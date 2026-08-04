@@ -365,7 +365,7 @@ class PintaMapesInterficie:
             self.root.after_cancel(self._active_timer_id)
 
         # Programar el resize del canal actiu després de 50 ms
-        self._active_timer_id = self.root.after(100, self.zoom._resize())
+        self._active_timer_id = self.root.after(100, self.zoom.resize())
         
     def event_to_pixel(self, event):
         x_pixel = math.floor(self.N[0] / self.mida[0] * event.xdata) + 1
@@ -573,7 +573,7 @@ class PintaMapesInterficie:
 
         mapa.update_map(self.image, self.color[self.nommag], self.Z, (self.limInf, self.limSup), units, mida = self.mida, cbar = self.cax)
         self.zoom.midaBase = self.mida
-        self.zoom._base_size()
+        self.zoom.base_size()
         self.object['map_limInf'].value.set(self.limInf)
         self.object['map_limSup'].value.set(self.limSup)
         self.object['cmap'].value.set(self.color[self.nommag])

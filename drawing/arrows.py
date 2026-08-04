@@ -43,6 +43,12 @@ class FletxaBase:
         if hasattr(self, "cid_move"):
             canvas.mpl_disconnect(self.cid_move)
 
+    def update(self, start, end):
+        self.elimina()
+        self.start = start
+        self.end = end
+        self.dibuixa()
+
     def _actualitzar_fletxa(self):
         if self.background is None:
             return  # Esperem que la fletxa inicial sigui creada

@@ -1,6 +1,6 @@
-from numpy import genfromtxt, unique, nansum
+from numpy import genfromtxt, unique
 from process.converter import raman_to_nm, raman_to_eV, nm_to_raman, nm_to_eV, eV_to_raman, eV_to_nm
-from classes import ChannelData
+from classes import ChannelData, Geometry, ObjectData
 
 def load(file_list, fileclass):
     file = file_list[0]
@@ -44,6 +44,6 @@ def load(file_list, fileclass):
             xdata['1/cm'] = q
 
     channels['Spectra'] = ChannelData(name='Spectra', units = units, xdata=xdata, spectra=spectra)
-    data = {'channel': channels, 'N': N, '_midaBase': mida, 'laser': laser}
+    data = {'channel': channels, 'geometry': Geometry(N, mida), 'objects': ObjectData(), 'laser': laser}
 
     return fileclass(**data)

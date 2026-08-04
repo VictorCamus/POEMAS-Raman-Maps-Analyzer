@@ -6,6 +6,8 @@ from process.basics import truncar_significatives
 def create_map(*args, **kwargs):
     figure = Figure()
     figure.patch.set_alpha(0)
+    figure.subplots_adjust(bottom=0.1, top=0.9)
+
     axis = figure.add_subplot(111)
     image = axis.imshow([[0]], origin="lower")
     

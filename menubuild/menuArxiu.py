@@ -1,13 +1,12 @@
-from fileio import open_file, h5
-from process import statistics as stats
 from pathlib import Path
-from classes import FileData 
-from .base import BaseMenu
-import h5py
-
 from collections import defaultdict
 from tkinter import filedialog, messagebox
 from matplotlib.pyplot import close
+
+from fileio import open_file, h5
+from process import statistics as stats
+from classes.file import FileData, FileView
+from .base import BaseMenu
 
 class GestorArxiu(BaseMenu):  # Classe que gestiona les accions del menú "Arxiu" de l'aplicació.
     ordre = 0 # Atribut per a ordenar els menús (opcional)
@@ -72,11 +71,42 @@ class GestorArxiu(BaseMenu):  # Classe que gestiona les accions del menú "Arxiu
             return
 
         folder = parent / name
-        file.create_gui(name, folder, self.notebook)
+        file.name = name; file.folder = folder
+
+        file.view = FileView(self.notebook, file)
         self.files[name] = file
 
         if self.current_file is None: self.current_file = file
 
+    def _save(self, file, fig, ax, amb_histograma=True):  # Guarda les dades de totes les pestanyes obertes en fitxers.
+        if not self.condicions_guardar(file): return False
+        file.folder.mkdir(parents=True, exist_ok=True)
+
+        g = file.geometry
+        map = file.view.map
+
+        for channelKey, ch in file.channel.items():
+            map.refresh_map(ch)
+
+            if amb_histograma:
+                x0, x1, y0, y1 = g.limit_pixels()
+                zhist = ch.Z[y0:y1, x0:x1].flatten()
+
+                if ch.name != 'GRAIN':
+                    stats.guardar_histograma(fig, ax, zhist, ch.lims, file.folder, channelKey, title=ch.ax_title)
+                else:
+                    stats.guardar_histograma_grans(zhist, file.folder, g.midaBase, g.N, ch.name, channelKey)
+
+            if not hasattr(file, 'mask'):
+                map.figure.savefig(f"{file.folder}/{channelKey}.png", bbox_inches='tight')
+            else:
+                mask_folder = file.folder / 'Màscares'
+                if not mask_folder.is_dir(): mask_folder.mkdir(parents=True, exist_ok=True)
+                map.figure.savefig(f"{file.folder}/Màscares/{channelKey}.png", bbox_inches='tight')
+
+        h5.save(Path(f'{file.folder}.h5'), file)
+        return True
+    
     def _save_session(self):
         if not self.comprova_fitxer(): return
         
@@ -84,44 +114,22 @@ class GestorArxiu(BaseMenu):  # Classe que gestiona les accions del menú "Arxiu
             filetypes=[("HDF5", "*.hdf5")])
         
         if ruta: h5.save_session(ruta, self.files)
-
-    def _save(self, file, fig, ax, amb_histograma=True): # Guarda les dades de totes les pestanyes obertes en fitxers.
-        if not self.condicions_guardar(file): return False
-        file.folder.mkdir(parents = True, exist_ok=True)
-        
-        for channelKey, ch in file.channel.items():
-            file.redraw(ch)
-
-            if amb_histograma:
-                x0, x1, y0, y1 = file.limit_pixels
-                zhist = ch.Z[y0:y1, x0:x1].flatten()
-
-                if ch.name != 'GRAIN': stats.guardar_histograma(fig, ax, zhist, ch.lims, file.folder, channelKey, title = ch.ax_title)
-                else: stats.guardar_histograma_grans(zhist, file.folder, file.midaBase, file.N, ch.name, channelKey)
-
-            if not hasattr(file,'mask'): file.figure.savefig(f"{file.folder}/{channelKey}.png", bbox_inches='tight')
-            else: 
-                mask_folder = file.folder / 'Màscares'
-                if not mask_folder.is_dir(): mask_folder.mkdir(parents=True, exist_ok=True)
-                file.figure.savefig(f"{file.folder}/Màscares/{channelKey}.png", bbox_inches='tight')
-
-        h5.save(Path(f'{file.folder}.h5'), file)
-        return True
     
     def _close_file(self): # Tanca el fitxer actual i neteja les dades associades.
         file = self.current_file
         if not file: return
-        
-        file.figure.clf()
-        close(file.figure)
 
-        self.notebook.forget(file.frame)
+        figure = file.view.map.figure
+        figure.clf()
+        close(figure)
+
+        self.notebook.forget(file.view.tab)
         
         for key in list(self.files.keys()):
             if self.files[key] is file:
                 self.files.pop(key)
                 break
 
-        if not self.files: 
+        if not self.files:
             self.label_inici.place(relx=0.5, rely=0.5, anchor='center')
             self.current_file = None

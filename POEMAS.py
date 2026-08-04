@@ -11,51 +11,23 @@ class Aplicacio: # Classe principal de l'aplicació que gestiona la interfície 
     def __init__(self, root):
         self.root = root
         self.current_file = None
-        self.files = {}
+        self.files = dict()
 
-        self.notebook = ttk.Notebook(self.root) # Crea un notebook per a les pestanyes.
-        self.notebook.pack(fill='both', expand=True)
-        self._mostrar_missatge_inicial()
-        
         self._active_timer_id = None
         self._restants_timer_id = None
         self.drag_tab = None
 
-        self.menu = Menu(root, bg="#121212", fg="white") # Crea un menú principal per a l'aplicació...
-        self.gestors = BuildMenu(self)
-        
-        self.root.title("WSxM - Interfície Gràfica")
+        self.notebook = ttk.Notebook(self.root) # Crea un notebook per a les pestanyes.
+        self.notebook.pack(fill='both', expand=True)
 
-        self._activar_binds()
-        self._configurar_estil()
+        self._init_message()
+        self._init_menu()
+        self._init_style()
+        self._init_binds()
 
-    def _activar_binds(self):
-        self.root.bind("<Configure>", self._trigger_resize)
+        self.root.title("POEMAS - Interfície Gràfica")
 
-        self.root.bind_all("<Up>", self._next_tab_global_next)
-        self.root.bind_all("<Down>", self._next_tab_global_prev)
-        self.root.bind_all("<Right>", self._next_tab_file_next)
-        self.root.bind_all("<Left>", self._next_tab_file_prev)
-
-        self.notebook.bind("<<NotebookTabChanged>>", self._on_file_changed)
-        self.notebook.bind("<ButtonPress-1>", self._on_press)
-        self.notebook.bind("<B1-Motion>", self._on_drag)
-
-    def _configurar_estil(self): # Configura l'estil de la interfície gràfica.
-        style = ttk.Style()
-        style.theme_use('clam') # Tema visual de l'aplicació
-        BG = "#121212"
-        FG = "#eeeeee"
-        ACCENT = "#3a7ff6"
-        style.configure("TNotebook.Tab", font=('Helvetica', 14, 'bold'), padding=[10, 5], background="#121212", foreground="white"), 
-        style.map("TNotebook.Tab", background=[("selected", "#2811DA")])
-        style.configure("TFrame", background=BG)
-        style.configure("TLabel", background=BG, foreground=FG, font=('Helvetica', 16))
-        style.configure("TNotebook", background=BG, borderwidth=0)
-        style.configure("TMenu", font=('Helvetica', 12), background=BG, foreground=FG)
-        style.configure("Green.Horizontal.TProgressbar", troughcolor='#e0e0e0', background='#2ecc71', thickness=18) # Barra de progrés verda
-        
-    def _mostrar_missatge_inicial(self): # Mostra un missatge inicial quan s'obre l'aplicació.
+    def _init_message(self): # Mostra un missatge inicial quan s'obre l'aplicació.
         self.label_inici = ttk.Label(
             self.root,
             text="Carrega un fitxer per a començar.",
@@ -64,23 +36,41 @@ class Aplicacio: # Classe principal de l'aplicació que gestiona la interfície 
             justify='center'
         )
         self.label_inici.place(relx=0.5, rely=0.5, anchor='center')
-        
-    def _next_tab_global_next(self, event):
-        return self._next_tab(True, notebook=self.notebook)
 
-    def _next_tab_global_prev(self, event):
-        return self._next_tab(False, notebook=self.notebook)
+    def _init_menu(self):
+        self.menu = Menu(self.root, bg="#121212", fg="white") # Crea un menú principal per a l'aplicació...
+        self.gestors = BuildMenu(self)
 
-    def _next_tab_file_next(self, event):
-        if not self.current_file:
-            return "break"
-        return self._next_tab(True, notebook=self.current_file.notebook)
+    def _init_style(self): # Configura l'estil de la interfície gràfica.
+        style = ttk.Style()
+        style.theme_use('clam') # Tema visual de l'aplicació
+        BG = "#121212"
+        FG = "#eeeeee"
+        ACCENT = "#3a7ff6"
+        style.configure("TNotebook.Tab", font=('Helvetica', 14, 'bold'), padding=[10, 5], background="#121212", foreground="white"),
+        style.map("TNotebook.Tab", background=[("selected", "#2811DA")])
+        style.configure("TFrame", background=BG)
+        style.configure("TLabel", background=BG, foreground=FG, font=('Helvetica', 16))
+        style.configure("TNotebook", background=BG, borderwidth=0)
+        style.configure("TMenu", font=('Helvetica', 12), background=BG, foreground=FG)
+        style.configure("Green.Horizontal.TProgressbar", troughcolor='#e0e0e0', background='#2ecc71', thickness=18) # Barra de progrés verda
 
-    def _next_tab_file_prev(self, event):
-        if not self.current_file:
-            return "break"
-        return self._next_tab(False, notebook=self.current_file.notebook)
-    
+    def _init_binds(self):
+        self.root.bind("<Configure>", self._trigger_resize)
+
+        self.root.bind_all("<Up>", lambda e: self._next_tab(True, self.notebook))
+        self.root.bind_all("<Down>", lambda e: self._next_tab(False, self.notebook))
+
+        self.root.bind_all("<Right>", lambda e: self._next_tab(True, self.current_file.view.selector)
+                           if self.current_file else "break")
+        self.root.bind_all("<Left>", lambda e: self._next_tab(False, self.current_file.view.selector)
+                           if self.current_file else "break")
+
+        self.notebook.bind("<<NotebookTabChanged>>", self._on_file_changed)
+        self.notebook.bind("<ButtonPress-1>", self._on_press)
+        self.notebook.bind("<B1-Motion>", self._on_drag)
+        self.notebook.bind("<ButtonRelease-1>", self._on_release)
+
     def _next_tab(self, next: bool, notebook):
         if not notebook or not notebook.tabs():
             return "break"
@@ -96,27 +86,27 @@ class Aplicacio: # Classe principal de l'aplicació que gestiona la interfície 
         if not self.current_file:
             return
 
-        file = self.current_file
+        tab = self.current_file.view.tab
 
         # Cancel·lar el timer del resize ràpid del canal actiu
-        if hasattr(self, "_active_timer_id") and self._active_timer_id:
-            file.frame.after_cancel(self._active_timer_id)
+        if self._active_timer_id:
+            tab.after_cancel(self._active_timer_id)
 
         # Programar el resize del canal actiu després de 50 ms
-        self._active_timer_id = file.frame.after(25, self._resize_activ)
+        self._active_timer_id = tab.after(25, self._resize_active)
         
         # Cancel·lar i programar el timer global del retard de 1 segon
-        if hasattr(self, "_restants_timer_id") and self._restants_timer_id:
+        if self._restants_timer_id:
             self.root.after_cancel(self._restants_timer_id)
         
         self._restants_timer_id = self.root.after(1000, self._resize_restants)
 
     # -----------------------
-    def _resize_activ(self):
+    def _resize_active(self):
         """Executa el resize només del canal/pestanya activa."""
         if not self.current_file: return
         
-        self.current_file.zoom._resize()
+        self.current_file.view.map.zoom.resize()
         self._active_timer_id = None
 
     # -----------------------
@@ -126,7 +116,7 @@ class Aplicacio: # Classe principal de l'aplicació que gestiona la interfície 
 
         for f in self.files.values():
             if f is not self.current_file:
-                f.zoom._resize()
+                f.view.map.zoom.resize()
 
         self._restants_timer_id = None
     
@@ -136,9 +126,9 @@ class Aplicacio: # Classe principal de l'aplicació que gestiona la interfície 
         if not self.current_file: return
 
         for f in self.files.values():
-            if str(f.frame) == tab_id:
+            if str(f.view.tab) == tab_id:
                 self.current_file = f
-                f.capçalera.set_channel(f.current_channel)
+                f.view.map.header.set_channel(f.current_channel)
                 break
 
     def _on_press(self, event):

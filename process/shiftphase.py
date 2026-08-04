@@ -1,9 +1,9 @@
 import numpy as np
-import math as math
 from tkinter import Toplevel
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from scipy.ndimage import gaussian_filter
 from scipy.signal import fftconvolve
+
 from drawing.plots import base_plot
 
 def cross_correlation_shift(img1, img2, sigma_hp=20, use_window=True, plot=False):
@@ -43,7 +43,7 @@ def cross_correlation_shift(img1, img2, sigma_hp=20, use_window=True, plot=False
             dy -= corr.shape[0]
         if dx > corr.shape[1] // 2:
             dx -= corr.shape[1]
-            
+
     else:
         # CAS 2 — mides diferents → FFT convolució (més lenta i sorollosa però funciona)
         corr = fftconvolve(f1, f2[::-1, ::-1], mode='full')
@@ -116,21 +116,3 @@ def line_by_line_drift_correction(img, max_shift=20): # Corregeix drift horitzon
         ref_row = corrected[y]
 
     return corrected, shifts
-
-def apply_crop(file, ix0, ix1, iy0, iy1): # Funció que aplica el crop a un fitxer donat els índexs de crop. Actualitza les dades i el render de tots els canals del fitxer.
-    Nx, Ny = file.N
-    Lx, Ly = file.midaBase
-
-    px, py = Lx / Nx, Ly / Ny
-
-    new_Nx, new_Ny = ix1 - ix0, iy1 - iy0
-    file.N = [new_Nx, new_Ny]
-    file.midaBase = (new_Nx * px, new_Ny * py)
-
-    file.crop = True
-
-    # actualitzar canals sense múltiples redraws
-    for ch in file.channel.values(): ch.Z = ch.Z[iy0:iy1, ix0:ix1]
-    
-    file.zoom.xylims = ((0, file.midaBase[0]), (0, file.midaBase[1]))
-    file.redraw()

@@ -74,8 +74,8 @@ def create_widget(type_widget, frame, text_label = None, row=0, col=0, key = Non
 
     return widget
 
-def add_entry(func, frame, set_value=None, state = 'normal'):
-    entry = Entry(frame, textvariable=set_value, state=state, font=('Helvetica', 9))
+def add_entry(func, frame, set_value=None, state = 'normal', width = 18):
+    entry = Entry(frame, textvariable=set_value, state=state, font=('Helvetica', 9), width = width)
     entry.bind('<Return>', func)
     return entry
 
@@ -102,7 +102,7 @@ def add_radiobuttons(func, frame, set_value=None, vertical=True, options=None):
 def add_scale(func, frame, set_value=0.5, from_=0.0, to=1.0, resolution=0.01):
     return Scale(frame, from_=from_, to=to, resolution=resolution, orient="horizontal", variable=set_value, length=150, command=func)
 
-def add_combobox(func, frame, set_value=None, options=None):
+def add_combobox(func, frame, set_value=None, options=None, width = 18):
     def internal_callback(event=None):
         set_value.set(combo.options[display_var.get()])
         func(event)
@@ -113,7 +113,7 @@ def add_combobox(func, frame, set_value=None, options=None):
     initial_key = next((k for k, v in options.items() if v == set_value.get()), labels[0])
 
     display_var = StringVar(frame, value=initial_key)
-    combo = Combobox(frame, values=labels, state="readonly", textvariable=display_var, font=('Helvetica', 9))
+    combo = Combobox(frame, values=labels, state="readonly", textvariable=display_var, font=('Helvetica', 9), width = width)
     combo.options = options
     combo.bind("<<ComboboxSelected>>", internal_callback)
     
@@ -208,16 +208,10 @@ def build_grid(frame, grid, row: int = 0, col: int = 0, figure: object = None, b
 
     return widgets
 
-def tab(notebook, grid, name, **kwargs):
-    tab_frame = Frame(notebook)
-    notebook.add(tab_frame, text=name)
-    widgets = build_grid(tab_frame, grid, **kwargs)
-    return widgets
-
-def create_frame(notebook, name):
-    frame = Frame(notebook)
-    notebook.add(frame, text=name)
-    return frame
+def create_tab(notebook, name):
+    tab = Frame(notebook)
+    notebook.add(tab, text=name)
+    return tab
 
 def destroy_widgets(widgets_dict): # Destrueix tots els widgets i els seus labels associats.
     for w in widgets_dict.values():

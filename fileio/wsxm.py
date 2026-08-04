@@ -1,4 +1,5 @@
-from classes import ChannelData
+from classes import ChannelData, Geometry, ObjectData
+import numpy as np
 
 MAGIC1a = b"WSxM file copyright Nanotec Electronica"
 MAGIC1b = b"WSxM file copyright WSxM solutions"
@@ -70,7 +71,6 @@ def get_lateral_size(meta, Nx, Ny):
             parts = s.split()
             value = float(parts[0])
             unit = parts[1] if len(parts) > 1 else "m"
-
             # conversió a µm (com al teu xyz)
             factors = {
                 "m": 1e6,
@@ -86,6 +86,7 @@ def get_lateral_size(meta, Nx, Ny):
 
     x_amp = meta.get("Control::X Amplitude")
     y_amp = meta.get("Control::Y Amplitude")
+    z_amp = meta.get("General Info::Z Amplitude")
 
     if x_amp:
         midaX, _ = parse_value_unit(x_amp)
@@ -97,7 +98,12 @@ def get_lateral_size(meta, Nx, Ny):
     else:
         midaY = Ny  # fallback
 
-    return round(midaX, 3), round(midaY, 3)
+    if z_amp:
+        _, units = parse_value_unit(z_amp)
+    else:
+        units = None
+
+    return [round(midaX, 3), round(midaY, 3)], units
 
 def read_data_field(buffer, xres, yres, dtype):
     if dtype == "double":
@@ -141,7 +147,7 @@ def load_wsxm(filename):
     return image, meta
 
 def load(file_list, fileclass):
-    type_map = {'.top': 'AFM', '.Auxfeed': 'CPD', '.ch15': 'MAG', '.ch16': 'PHASE'}
+    type_map = {'.top': 'Height', '.Auxfeed': 'CPD', '.ch15': 'Mag', '.ch16': 'Phase'}
     channels = {}
 
     for file in file_list:
@@ -150,10 +156,10 @@ def load(file_list, fileclass):
         Z, meta = load_wsxm(file)
 
         Ny, Nx = Z.shape
-        mida = get_lateral_size(meta, Nx, Ny)
+        mida, units = get_lateral_size(meta, Nx, Ny)
         N = Nx, Ny
 
-        channels[name] = ChannelData(name=name, Z=Z)
+        channels[name] = ChannelData(name=name, Z=Z, units = units)
 
-    data = {'channel': channels, 'N': N, '_midaBase': mida}
+    data = {'channel': channels, 'geometry': Geometry(N, mida), 'objects': ObjectData()}
     return fileclass(**data)

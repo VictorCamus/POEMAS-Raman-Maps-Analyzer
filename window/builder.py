@@ -63,15 +63,15 @@ class BaseWindow:
 
         if self.file_key == "Tots els mapes": return
         
-        if self.update: self.file.notebook.select(self.channel.frame)
+        if self.update: self.file.view.selector.select(self.channel.tab)
 
     def files_list(self):
         if self.file_key == "Tots els mapes":
             files = list(self.files.values())
         else:
             files = [self.file]
-            if self.file_ref and self.file_ref not in files: files.append(self.file_ref)
-            if self.update: self.notebook.select(self.file.frame)
+            if self.file_ref is not None and self.file_ref is not self.file: files.append(self.file_ref)
+            if self.update: self.notebook.select(self.file.view.tab)
 
         return files
     
@@ -79,7 +79,7 @@ class BaseWindow:
         list_files = ["Tots els mapes"] + list(self.files.keys())
         self._file_ref = self.files[list_files[1]]
         
-        channels = self.file_ref.channel.keys() & self.file.channel.keys()
+        channels = list(self.file_ref.channel.keys() & self.file.channel.keys())
         
         if self.channel.name in channels: initCh = self.channel.name
         else: initCh = channels[0]
@@ -151,7 +151,7 @@ class BaseMapWindow(BaseWindow):
         self.z = ch.Z
         self.units = ch.units
 
-        self.figure, self.axis, self.image, self.cbar = map.create_map(ch.color.cmap, self.z, self.lims, self.units, self.file.midaBase, ch.color.lims)
+        self.figure, self.axis, self.image, self.cbar = map.create_map(ch.color.cmap, self.z, self.lims, self.units, self.file.geometry.midaBase, ch.color.lims)
         w, h = self.figure.get_size_inches()   # mida actual
 
         factor = 0.8
@@ -164,23 +164,22 @@ class BaseMapWindow(BaseWindow):
 
         self.fig_frame, self.canvas = self._init_figure(self.main_frame, self.figure)
         self.canvas.get_tk_widget().config(bg='#2e2e2e', highlightthickness=0, bd=0)
-        
-        rect = self.file.midaBase[1]/self.file.midaBase[0]
-        dimensions = map.get_dimensions(self.axis, rect)
-        map.set_dimensions(self.canvas, self.escala, self.cbar, rect, *dimensions)
+
+        dimensions = map.get_dimensions(self.axis, self.file.geometry.rect)
+        map.set_dimensions(self.canvas, self.escala, self.cbar, self.file.geometry.rect, *dimensions)
 
     def file_changed(self, value):
         self.file = value
         self.channel_changed(self.widgets['channel'].get())
         
-        midaX, midaY = self.file.midaBase
+        midaX, midaY = self.file.geometry.midaBase
         self.image.set_extent([0, midaX, 0, midaY])
         self.axis.set_xlim(0, midaX)
         self.axis.set_ylim(0, midaY)
-        self.escala.actualitza(*self.file.zoom.xylims)
-        rect = self.file.midaBase[1] / self.file.midaBase[0]
-        dimensions = map.get_dimensions(self.axis, rect)
-        map.set_dimensions(self.canvas, self.escala, self.cbar, rect, *dimensions)
+        self.escala.actualitza(*self.file.geometry.xylims)
+
+        dimensions = map.get_dimensions(self.axis, self.file.geometry.rect)
+        map.set_dimensions(self.canvas, self.escala, self.cbar, self.file.geometry.rect, *dimensions)
         self.canvas.draw_idle()
         
     def channel_changed(self, value):
@@ -192,7 +191,7 @@ class BaseMapWindow(BaseWindow):
         self.cbar.limInf.set_color(ch.color.limInf)
         self.cbar.limSup.set_color(ch.color.limSup)
 
-        map.update_map(self.image, ch.color.cmap, ch.Z, ch.lims, ch.units, mida = self.file.midaBase, colLims = ch.color.lims, cbar = self.cbar)
+        map.update_map(self.image, ch.color.cmap, ch.Z, ch.lims, ch.units, mida = self.file.geometry.midaBase, colLims = ch.color.lims, cbar = self.cbar)
         self.escala.color = ch.color.scale
         self.image.set_clim(ch.lims)
         self.canvas.draw_idle()
@@ -210,14 +209,14 @@ class BaseMapWindow(BaseWindow):
         ch = self.file.channel[self.widgets['channel'].get()]
         ch.Z = self.z
         ch.lims = self.lims
-        current_chframe = self.file.notebook.select()
+        current_chframe = self.file.view.selector.select()
 
-        self.notebook.select(self.file.frame)
-        self.file.notebook.select(ch.frame)
+        self.notebook.select(self.file.view.tab)
+        self.file.view.selector.select(ch.tab)
         
-        if current_chframe == str(ch.frame):
-            self.file.capçalera.set_channel(ch)
-            self.file.redraw()
+        if current_chframe == str(ch.tab):
+            self.file.view.map.header.set_channel(ch)
+            self.file.view.map.refresh_map()
 
 class BaseFigureWindow(BaseWindow):
     def __init__(self, gestor, nom, dim=(4,4)):

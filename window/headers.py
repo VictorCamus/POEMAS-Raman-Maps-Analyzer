@@ -10,21 +10,24 @@ import numpy as np
 # Conté també les mètodes per afegir etiquetes, camps d'entrada i comboboxes a la capçalera.
 
 class GestorHeaderAFM:
-    def __init__(self, filedata):
-        self.filedata = filedata
-        self.view = CrearHeaderAFM(parent=filedata.frame, controller=self)
+    def __init__(self, map):
+        self.map = map
+        self.view = CrearHeaderAFM(parent=self.map.frame, controller=self)
+
+    @property
+    def channel(self):
+        return self.map.channel
 
     def set_channel(self, channel):
         self.view.refresh(channel)
         self._redraw(cmap = True, lims = True)
 
     def on_cmap_change(self, value):
-        ch = self.filedata.current_channel
-        ch.color.cmap_c = value
+        self.channel.color.cmap_c = value
         self._redraw(cmap = True)
     
     def on_rev_change(self, value, widget):
-        ch = self.filedata.current_channel
+        ch = self.channel
         if ch.color.cmap_r != value and ch.color.limSup != ch.color.limInf:
             ch.color.limInf, ch.color.limSup = ch.color.limSup, ch.color.limInf
             rb_climsup = widget["colSup"]
@@ -37,8 +40,7 @@ class GestorHeaderAFM:
         self._redraw(cmap = True)
 
     def on_lim_inf_change(self, value):
-        ch = self.filedata.current_channel
-        if value >= ch.lims[1]:
+        if value >= self.channel.lims[1]:
             messagebox.showerror(
                 "Error en actualitzar la gràfica",
                 "El límit inferior ha de ser menor que el superior."
@@ -46,66 +48,57 @@ class GestorHeaderAFM:
             
             return
 
-        ch.lims[0] = value
+        self.channel.lims[0] = value
         self._redraw(lims = True)
     
     def on_lim_sup_change(self, value):
-        ch = self.filedata.current_channel
-        if value <= ch.lims[0]:
+        if value <= self.channel.lims[0]:
             messagebox.showerror(
                 "Error en actualitzar la gràfica",
                 "El límit inferior ha de ser menor que el superior."
             )
             return
 
-        ch.lims[1] = value
+        self.channel.lims[1] = value
         self._redraw(lims = True)
 
     def on_spectra_lim_inf_change(self, value):
-        channel = self.filedata.current_channel
-
-        channel.spectra_lims[0] = value
-        self._update_spectra_Z(channel)
+        self.channel.spectra_lims[0] = value
+        self._update_spectra_Z(self.channel)
 
     def on_spectra_lim_sup_change(self, value):
-        channel = self.filedata.current_channel
-
-        channel.spectra_lims[1] = value
-        self._update_spectra_Z(channel)
+        self.channel.spectra_lims[1] = value
+        self._update_spectra_Z(self.channel)
 
     def on_scale_change(self, value):
-        ch = self.filedata.current_channel
-        ch.color.scale = value
-        self.filedata.escala.color = ch.color.scale
-        self.filedata.canvas.draw_idle()
+        self.channel.color.scale = value
+        self.map.escala.color = self.channel.color.scale
+        self.map.canvas.draw_idle()
         
     def on_col_sup_change(self, value):
-        ch = self.filedata.current_channel
-        ch.color.limSup = value
+        self.channel.color.limSup = value
         self._redraw(cmap = True)
     
     def on_col_inf_change(self, value):
-        ch = self.filedata.current_channel
-        ch.color.limInf = value
+        self.channel.color.limInf = value
         self._redraw(cmap = True)
         
     def _redraw(self, cmap = False, lims = False, Z = False):
-        file = self.filedata
-        ch = self.filedata.current_channel
+        ch = self.channel
 
         if cmap: 
-            file.image.set_cmap(ch.color.cmap)
-            file.cbar.limInf.set_color(ch.color.limInf)
-            file.cbar.limSup.set_color(ch.color.limSup)
+            self.map.image.set_cmap(ch.color.cmap)
+            self.map.cbar.limInf.set_color(ch.color.limInf)
+            self.map.cbar.limSup.set_color(ch.color.limSup)
         
         if lims:
-            file.image.set_clim(*ch.lims)
-            file.cbar.limInf.set_text(f"{ch.lims[0]:g}" + (f" {ch.units}" if ch.units else ""))
-            file.cbar.limSup.set_text(f"{ch.lims[1]:g}" + (f" {ch.units}" if ch.units else ""))
+            self.map.image.set_clim(*ch.lims)
+            self.map.cbar.limInf.set_text(f"{ch.lims[0]:g}" + (f" {ch.units}" if ch.units else ""))
+            self.map.cbar.limSup.set_text(f"{ch.lims[1]:g}" + (f" {ch.units}" if ch.units else ""))
 
-        if Z: file.image.set_data(ch.Z)
+        if Z: self.map.image.set_data(ch.Z)
 
-        file.canvas.draw_idle()
+        self.map.canvas.draw_idle()
 
     def _update_spectra_Z(self, channel):
         x = channel.xdata['nm']
@@ -120,22 +113,24 @@ class GestorHeaderAFM:
 
 class CrearHeaderAFM:
     def __init__(self, parent, controller):
-        self.frame = Frame(parent)
         self.controller = controller
-        self.channel = self.controller.filedata.current_channel
 
-        self.frame.grid(row=2, column=0, sticky='ew', pady = 5)
+        self.frame = Frame(parent)
         self.frame.columnconfigure(0, weight=1)
 
         if self.channel.spectra is not None: self._editar_limits_spectra()
         self._editar_limits()
         self._color_mapa_escala()
 
+    @property
+    def channel(self):
+        return self.controller.channel
+
     def _color_mapa_escala(self): # Afegeix controls per canviar el color del mapa i de l'escala.
         def _grid_color():
             return [
                 (("cmap_c", str, self.channel.name),
-                 ("Color mapa:", 'cb', {"options": cmaps}),
+                 ("Color mapa:", 'cb', {"options": cmaps, "width": '10'}),
                  (self.controller.on_cmap_change, "args", {})),
                 (("cscale", str, 'w'),
                  ("Color escala:", 'radiobutton', {"options": {'B': 'w', 'N': 'k'}, 'vertical': False}),
@@ -157,10 +152,10 @@ class CrearHeaderAFM:
         def _grid_lims():
             return [
                 (("limSup", float, self.channel.lims[1]),
-                 ("Valor màxim:", 'entry', {}),
+                 ("Valor màxim:", 'entry', {"width": 10}),
                  (self.controller.on_lim_sup_change, "args", {})),
                 (("limInf", float, self.channel.lims[0]),
-                 ("Valor mínim:", 'entry', {}),
+                 ("Valor mínim:", 'entry', {"width": 10}),
                  (self.controller.on_lim_inf_change, "args", {}))
             ]
         def _color_lims():
@@ -181,11 +176,11 @@ class CrearHeaderAFM:
         def _grid_lims_spectra():
             return [
                 (("LimSup", float, self.channel.spectra_lims[1]),
-                 ("Espectre màxim:", 'entry', {}),
+                 ("Espectre màxim:", 'entry', {"width": 10}),
                  (self.controller.on_spectra_lim_sup_change, "args", {})),
 
                 (("LimInf", float, self.channel.spectra_lims[0]),
-                 ("Espectre mínim:", 'entry', {}),
+                 ("Espectre mínim:", 'entry', {"width": 10}),
                  (self.controller.on_spectra_lim_inf_change, "args", {}))
             ]
 
@@ -226,7 +221,7 @@ class GestorHeaderRAMAN:
 
     def new_cmap(self, event):
         self.file.image.set_cmap(event.widget.get())
-        self.file.fig.canvas.draw()
+        self.file.view.canvas.draw()
 
     def new_spectype(self, event):
         self.file.spec_type = event.widget.get()

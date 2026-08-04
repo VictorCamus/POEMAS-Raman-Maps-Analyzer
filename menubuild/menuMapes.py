@@ -1,12 +1,11 @@
 import numpy as np
 
 from tkinter import messagebox
-from tkinter.ttk import Frame
-
 from classes import ChannelData
 from .base import BaseMenu
 from window import BaseWindow
-from process.shiftphase import cross_correlation_shift, apply_crop
+from process.shiftphase import cross_correlation_shift
+from window.labels import create_tab
 
 class GestorMapes(BaseMenu): # Classe que gestiona les accions relacionades amb el zoom de les imatges.
     ordre = 40 # Atribut per a ordenar els menús (opcional)
@@ -62,22 +61,21 @@ class OperarMaps(BaseWindow):
         for f in files:
             if f is file_ref: continue
                         
-            if file_ref.N != f.N or file_ref.midaBase != f.midaBase:
+            if not np.array_equal(file_ref.geometry.N, f.geometry.N) or not np.array_equal(file_ref.geometry.midaBase, f.geometry.midaBase):
                 return False
 
             ch = f.channel[self.channel_key]
 
             match self.opt:
-                case "sum":  zNew = ch.Z + ch_ref.Z
-                case "subs": zNew = ch.Z - ch_ref.Z
-                case "mult": zNew = ch.Z * ch_ref.Z
-                case "div":  zNew = ch.Z / ch_ref.Z
+                case "sum":  zNew = ch.Z + ch_ref.Z; units = ch_ref.units
+                case "subs": zNew = ch.Z - ch_ref.Z; units = ch_ref.units
+                case "mult": zNew = ch.Z * ch_ref.Z; units = f'{ch_ref.units}²'
+                case "div":  zNew = ch.Z / ch_ref.Z; units = ''
             
-            tab = Frame(f.notebook)
-            f.notebook.add(tab, text=self.new_chname)
+            tab = create_tab(f.view.selector, self.new_chname)
 
-            f.channel[self.new_chname] = ChannelData(self.new_chname, self.new_chname, zNew)
-            f.channel[self.new_chname].frame = tab
+            f.channel[self.new_chname] = ChannelData(self.new_chname, zNew, units)
+            f.channel[self.new_chname].tab = tab
             
         return True
 
@@ -91,8 +89,8 @@ class OperarMaps(BaseWindow):
             messagebox.showerror("Operacions amb mapes", "Els mapes triats no tenen les mateixes dimensions.")
             return
 
-        if self.file_key != "Tots els mapes" and self.new_chname in self.file.channel:
-            self.file.notebook.select(self.file.channel[self.new_chname].frame)
+        if self.file_key != "Tots els mapes" and self.new_chname in list(self.file.channel):
+            self.file.view.selector.select(self.file.channel[self.new_chname].tab)
 
 class ShiftMaps(BaseWindow):
     def __init__(self, gestor):
@@ -124,8 +122,8 @@ class ShiftMaps(BaseWindow):
         files = self.files_list()
         file_ref = self.file_ref
 
-        Lx_ref, Ly_ref = file_ref.midaBase
-        Nx_ref, Ny_ref = file_ref.N
+        Lx_ref, Ly_ref = file_ref.geometry.midaBase
+        Nx_ref, Ny_ref = file_ref.geometry.N
         px_ref, py_ref = Lx_ref/Nx_ref, Ly_ref/Ny_ref
 
         # ROI global en coords físiques del fitxer de referència
@@ -138,41 +136,38 @@ class ShiftMaps(BaseWindow):
 
         for f in files:
             if f is file_ref:
+                shifts[f.name] = (0, 0)
                 continue
 
             dx, dy = cross_correlation_shift(file_ref.channel[self.channel_key].Z,
                                             f.channel[self.channel_key].Z)
-            shifts[f.name] = (dx, dy)
-
             # convertir a unitats físiques
-            dx_phys, dy_phys = dx*px_ref, dy*py_ref
+            shifts[f.name] = (dx*px_ref, dy*py_ref)
 
             # actualitzar ROI global
-            roi_global[0] = max(roi_global[0], dx_phys)
-            roi_global[1] = min(roi_global[1], dx_phys + f.midaBase[0])
-            roi_global[2] = max(roi_global[2], dy_phys)
-            roi_global[3] = min(roi_global[3], dy_phys + f.midaBase[1])
+            roi_global[0] = max(roi_global[0], shifts[f.name][0])
+            roi_global[1] = min(roi_global[1], shifts[f.name][0] + f.geometry.midaBase[0])
+            roi_global[2] = max(roi_global[2], shifts[f.name][1])
+            roi_global[3] = min(roi_global[3], shifts[f.name][1] + f.geometry.midaBase[1])
 
             if roi_global[0] >= roi_global[1] or roi_global[2] >= roi_global[3]:
                 raise ValueError("No hi ha solapament global")
-        
+
         for f in files:
-            if f is file_ref:
-                x0 = int(round(roi_global[0] * Nx_ref / Lx_ref))
-                x1 = int(round(roi_global[1] * Nx_ref / Lx_ref))
-                y0 = int(round(roi_global[2] * Ny_ref / Ly_ref))
-                y1 = int(round(roi_global[3] * Ny_ref / Ly_ref))
-            else:
-                dx, dy = shifts[f.name]
-                px, py = f.midaBase[0]/f.N[0], f.midaBase[1]/f.N[1]
-                dx_phys, dy_phys = dx*px_ref, dy*py_ref
+            if f is file_ref: px, py = px_ref, py_ref
+            else: px, py = f.geometry.midaBase[0]/f.geometry.N[0], f.geometry.midaBase[1]/f.geometry.N[1]
 
-                x0 = int(round((roi_global[0] - dx_phys)/px))
-                x1 = int(round((roi_global[1] - dx_phys)/px))
-                y0 = int(round((roi_global[2] - dy_phys)/py))
-                y1 = int(round((roi_global[3] - dy_phys)/py))
+            x0 = int(round((roi_global[0] - shifts[f.name][0]) / px))
+            x1 = int(round((roi_global[1] - shifts[f.name][0]) / px))
+            y0 = int(round((roi_global[2] - shifts[f.name][1]) / py))
+            y1 = int(round((roi_global[3] - shifts[f.name][1]) / py))
 
-            apply_crop(f, x0, x1, y0, y1)
+            f.geometry.N = np.array([x1 - x0, y1 - y0])
+            f.geometry.midaBase = np.array([f.geometry.N[0] * px, f.geometry.N[1] * py])
+            for ch in f.channel.values(): ch.Z = ch.Z[y0:y1, x0:x1]
+
+            for prof in f.objects.profile.values(): prof.line = [(x - x0, y - y0) for x, y in prof.line]
+            f.view.map.zoom.base_size()
 
 class TancarMaps(BaseWindow):
     def __init__(self, gestor):
@@ -187,15 +182,15 @@ class TancarMaps(BaseWindow):
         for f in files:
             if self.channel_key not in f.channel: continue 
         
-            f.notebook.forget(f.channel[self.channel_key].frame)
+            f.view.selector.forget(f.channel[self.channel_key].tab)
             f.channel.pop(self.channel_key, None)
 
             if not f.channel:
-                self.notebook.forget(f.frame)
-                close(self.file.figure)
+                self.notebook.forget(f.view.tab)
+                close(self.file.view.map.figure)
 
                 if f is self.file:    
-                    self.files.pop(f.name,None)
+                    self.files.pop(f.name, None)
                     
                     if not self.files:
                         self.label_inici.place(relx=0.5, rely=0.5, anchor='center')
@@ -209,7 +204,7 @@ class TancarMaps(BaseWindow):
 
         self.update_channels()
         first_channel = next(iter(self.file.channel.values()))
-        self.file.notebook.select(first_channel.frame)
+        self.file.view.selector.select(first_channel.tab)
 
     def _grid(self):
         files = ['Tots els mapes'] + list(self.files.keys())

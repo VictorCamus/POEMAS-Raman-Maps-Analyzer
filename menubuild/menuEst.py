@@ -125,7 +125,7 @@ class Histogrames(BaseFigureWindow):
         self.actualitza_plot()
     
     def compute_stats(self):
-        x0, x1, y0, y1 = self.file.limit_pixels
+        x0, x1, y0, y1 = self.file.geometry.limit_pixels()
         data = self.channel.Z[y0:y1, x0:x1].ravel()
         mean = data.mean()
         std = data.std()
@@ -210,7 +210,7 @@ class DirectionMean(BaseFigureWindow):
     def units(self, value):
         self._units = value
         if value: 
-            self.ax.set_xlabel(r'Length ($\mu$m)')
+            self.ax.set_xlabel('Length (μm)')
             self.widgets['freq'].configure(state='readonly')
         else: 
             self.ax.set_xlabel('Time (min)')
@@ -248,16 +248,16 @@ class DirectionMean(BaseFigureWindow):
         else: files = [self.file]
             
         for file in files:
-            x0, x1, y0, y1 = file.limit_pixels
+            x0, x1, y0, y1 = file.geometry.limit_pixels()
             z = file.channel[self.widgets['channel'].value.get()].Z[y0:y1, x0:x1]
             N = (x1-x0, y1-y0)
 
             if self._direction:
-                Npixels = N[0]; xlength = file.midaBase[0]
+                Npixels = N[0]; xlength = file.geometry.midaBase[0]
                 for a in range(Npixels): self.mean = np.append(self.mean, np.mean(z[0:,a]))
 
             else:
-                Npixels = N[1]; xlength = file.midaBase[1]
+                Npixels = N[1]; xlength = file.geometry.midaBase[1]
                 for a in range(Npixels): self.mean = np.append(self.mean, np.mean(z[a,0:]))
 
             if len(self.xval) == 0: start = 0
@@ -284,7 +284,7 @@ class DirectionMean(BaseFigureWindow):
         files = ['Tots els fitxers'] + list(self.files.keys())
         channels = list(self.file.channel.keys())
 
-        optxunits = {r'Longitud ($\mu$m)': True, 'Temps (min)': False}
+        optxunits = {'Longitud (μm)': True, 'Temps (min)': False}
 
         return [
             (("file", str, self.file.name), ("Arxiu:", 'cb', {"options": files}), (self.plot_file, "args")),

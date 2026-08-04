@@ -1,5 +1,5 @@
 from numpy import loadtxt, flipud
-from classes import ChannelData
+from classes import ChannelData, Geometry, ObjectData
 
 def load(file_list, fileclass):
     channels = {}
@@ -23,5 +23,5 @@ def load(file_list, fileclass):
 
         channels[tipus] = ChannelData(name=tipus, Z=Z, lims=lims)
 
-    data = {'channel': channels, 'N': N, '_midaBase': mida}
+    data = {'channel': channels, 'geometry': Geometry(N, mida), 'objects': ObjectData()}
     return fileclass(**data)

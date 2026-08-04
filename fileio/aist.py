@@ -1,6 +1,6 @@
 import struct
 import numpy as np
-from classes import ChannelData
+from classes import ChannelData, Geometry, ObjectData
 from process.converter import nm_to_raman, nm_to_eV
 
 # =========================================================
@@ -341,6 +341,6 @@ def load(file_list, fileclass):
                 laser = d['laser']
                 channels['Spectra'] = ChannelData(name = 'Spectra', units = d['units']['z'], lims = None, xdata = xdata, spectra = spectra)
 
-    data = {'channel': channels, 'N': N, '_midaBase': mida, 'laser': laser}
+    data = {'channel': channels, 'geometry': Geometry(N, mida), 'objects': ObjectData(), 'laser': laser}
 
     return fileclass(**data)
