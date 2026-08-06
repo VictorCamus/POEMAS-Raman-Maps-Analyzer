@@ -17,8 +17,8 @@ def base_plot(xtitle=None, ytitle=None, dim=(6,4)):
 
     ax.locator_params(axis='both', nbins=5)
 
-    ax.set_xlabel(xtitle, fontsize=20, labelpad=10, fontname='Arial')
-    ax.set_ylabel(ytitle, fontsize=20, labelpad=10, fontname='Arial')
+    ax.set_xlabel(xtitle, fontsize=20, labelpad=10)
+    ax.set_ylabel(ytitle, fontsize=20, labelpad=10)
 
     ax.set_axisbelow(True)
 

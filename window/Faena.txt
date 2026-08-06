@@ -1,3 +1,4 @@
 builder: -
-gestor_capçalera: -
+footers: -
+headers: -
 labels: -

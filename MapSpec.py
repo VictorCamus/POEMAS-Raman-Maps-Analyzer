@@ -7,10 +7,10 @@ import scipy.optimize as scopt
 import tkinter as tk
 from pathlib import Path
 import tkinter.ttk as ttk
-from pandas import read_table
+
 from classes.peaks import Pic, Fons
 from drawing import mapdraw as mapa
-from classes.file import InteraccioFigura
+from classes.map import MapInteraction
 from fileio.adapters import open_file
 from drawing.colormap import cmaps_matplotlib
 from drawing.plots import plot_peak
@@ -276,7 +276,7 @@ class PintaMapesInterficie:
         self.object['map_limInf'].value.set(self.limInf)
         self.object['map_limSup'].value.set(self.limSup)
         
-        self.image = self.ax[0].imshow(self.Z, origin="lower", vmin = self.limInf, vmax = self.limSup, extent = [0, self.mida[0], 0, self.mida[1]], interpolation = None)
+        self.image = self.ax[0].imshow(self.Z, origin="lower", vmin = self.limInf, vmax = self.limSup, extent = [0, self.geometry.mida[0], 0, self.geometry.mida[1]], interpolation = None)
         self.cax = mapa.create_cbar(self.fig, self.image)
         self.scale = mapa.Escala(self.ax[0])
     
@@ -295,7 +295,7 @@ class PintaMapesInterficie:
         self.root.bind('<Configure>', self._trigger_resize)
         self.root.bind_all('<Escape>', lambda event: self.root.quit())
         
-        self.zoom = InteraccioFigura(self.ax[0], self.image, self.scale, self.cax, self.mida)
+        # self.zoom = MapInteraction(self.ax[0], self.image, self.scale, self.cax, self.mida)
 
         marcBot = tk.Frame(self.root)
         marcBot.grid(row = 4, column = 0, sticky = 'ew')
@@ -363,13 +363,10 @@ class PintaMapesInterficie:
         if not hasattr(self, 'zoom'): return
         if hasattr(self, "_active_timer_id") and self._active_timer_id:
             self.root.after_cancel(self._active_timer_id)
-
-        # Programar el resize del canal actiu després de 50 ms
-        self._active_timer_id = self.root.after(100, self.zoom.resize())
         
     def event_to_pixel(self, event):
-        x_pixel = math.floor(self.N[0] / self.mida[0] * event.xdata) + 1
-        y_pixel = math.floor(self.N[1] / self.mida[1] * event.ydata) + 1
+        x_pixel = math.floor(self.geometry.N[0] / self.geometry.mida[0] * event.xdata) + 1
+        y_pixel = math.floor(self.geometry.N[1] / self.geometry.mida[1] * event.ydata) + 1
         return x_pixel, y_pixel
     
     def change_map(self, value):
@@ -383,14 +380,13 @@ class PintaMapesInterficie:
         file = open_file(self.format, file_list = [self.file], fileclass = FileData)
 
         channel = file.channel
-        self.N = file.N
-        self.mida = file.midaBase
+        self.geometry = file.geometry
         self.laser = file.laser
 
         channel = channel['Spectra']
         xdata = channel.xdata
         self.spectra = channel.spectra
-        Nx, Ny = self.N
+        Nx, Ny = self.geometry.N
 
         self.IntInt = np.nansum(self.spectra, axis=2).reshape(Ny, Nx)
         self.Z = self.IntInt.copy()
@@ -485,10 +481,10 @@ class PintaMapesInterficie:
                 self.object[key].value.set('')
     
     def limit_pixels(self):
-        x0 = int(self.zoom.xlims[0] / self.mida[0] * self.N[0])
-        x1 = int(self.zoom.xlims[1] / self.mida[0] * self.N[0])
-        y0 = int(self.zoom.ylims[0] / self.mida[1] * self.N[1])
-        y1 = int(self.zoom.ylims[1] / self.mida[1] * self.N[1])
+        x0 = int(self.geometry.xlims[0] / self.geometry.mida[0] * self.geometry.N[0])
+        x1 = int(self.geometry.xlims[1] / self.geometry.mida[0] * self.geometry.N[0])
+        y0 = int(self.geometry.ylims[0] / self.geometry.mida[1] * self.geometry.N[1])
+        y1 = int(self.geometry.ylims[1] / self.geometry.mida[1] * self.geometry.N[1])
         return x0, x1, y0, y1
     
     def plt_map(self, event = None, attr = None):
@@ -571,9 +567,7 @@ class PintaMapesInterficie:
         valors = self.Z[~np.isnan(self.Z)]
         self.limInf, self.limSup = lims_outliers(valors)
 
-        mapa.update_map(self.image, self.color[self.nommag], self.Z, (self.limInf, self.limSup), units, mida = self.mida, cbar = self.cax)
-        self.zoom.midaBase = self.mida
-        self.zoom.base_size()
+        mapa.update_map(self.image, self.color[self.nommag], self.Z, (self.limInf, self.limSup), units, mida = self.geometry.mida, cbar = self.cax)
         self.object['map_limInf'].value.set(self.limInf)
         self.object['map_limSup'].value.set(self.limSup)
         self.object['cmap'].value.set(self.color[self.nommag])
@@ -634,7 +628,6 @@ class PintaMapesInterficie:
         self.ax[1].clear()
         self.etiquette = {}
         pos = self.posy - 1, self.posx - 1
-        idx = pos[1] + pos[0] * self.N[0]
         self.I = self.spectra[*pos,:].copy()
         spec = self.specs[self.spec_type]
 

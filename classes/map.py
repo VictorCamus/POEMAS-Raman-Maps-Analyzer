@@ -1,6 +1,7 @@
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from typing import Tuple
 
+from process.converter import coords_to_pixel
 from classes.object import ProfileView
 from drawing import mapdraw
 from process import images as zoom
@@ -10,7 +11,6 @@ from window.footers import GestorFooterAFM
 class MapView:
     def __init__(self, model):
         self.model = model
-        self.frame = model.content
 
         self.figure, self.axis, self.image, self.cbar = mapdraw.create_map(self.channel.name, self.channel.Z,
                                                                        self.channel.lims, self.channel.units, self.geometry.midaBase)
@@ -25,10 +25,10 @@ class MapView:
 
         self.zoom = MapInteraction(self)
 
-        self.header.view.frame.grid(row=0, column=1, sticky="ew")
+        self.header.view.frame.grid(row=0, column=0)
         self.header.view.frame.grid_configure(pady=5)
-        widget.grid(row=1, column=0, columnspan = 3, sticky="nsew")
-        self.footer.view.frame.grid(row=2, column=1, sticky="ew")
+        widget.grid(row=1, column=0, sticky="nsew")
+        self.footer.view.frame.grid(row=2, column=0)
         self.footer.view.frame.grid_configure(pady=5)
 
         self.profiles = ProfileView(self.objects.profiles, self.axis, self.geometry)
@@ -78,8 +78,7 @@ class MapInteraction:
         self.map.canvas.mpl_connect('button_release_event', self._release)
         self.map.canvas.mpl_connect('motion_notify_event', self._motion)
 
-        self.map.canvas.mpl_connect("key_press_event",
-                                    lambda e: zoom.copy_figure(self.map.axis.figure) if e.key == "ctrl+c" else None)
+        self.map.canvas.mpl_connect("key_press_event", lambda e: zoom.copy_figure(self.map.figure) if e.key == "ctrl+c" else None)
         self.map.canvas.mpl_connect("key_press_event", lambda e: self.base_size() if e.key == "ctrl+z" else None)
 
     def _scroll(self, event):
@@ -90,6 +89,12 @@ class MapInteraction:
     def _press(self, event):
         if event.inaxes != self.map.axis: return
         self.press = event.xdata, event.ydata
+
+        if event.xdata==None or event.ydata==None: return
+        if not hasattr(self.map.model, "spectrum"): return
+
+        pixels = coords_to_pixel([(event.xdata, event.ydata)], self.geometry.N, self.geometry.midaBase)[0]
+        self.map.model.spectrum.plot_pixel(*pixels)
 
     def _release(self, event):
         self.press = None

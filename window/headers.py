@@ -12,7 +12,7 @@ import numpy as np
 class GestorHeaderAFM:
     def __init__(self, map):
         self.map = map
-        self.view = CrearHeaderAFM(parent=self.map.frame, controller=self)
+        self.view = CrearHeaderAFM(parent=self.map.model.content, controller=self)
 
     @property
     def channel(self):
@@ -62,14 +62,6 @@ class GestorHeaderAFM:
         self.channel.lims[1] = value
         self._redraw(lims = True)
 
-    def on_spectra_lim_inf_change(self, value):
-        self.channel.spectra_lims[0] = value
-        self._update_spectra_Z(self.channel)
-
-    def on_spectra_lim_sup_change(self, value):
-        self.channel.spectra_lims[1] = value
-        self._update_spectra_Z(self.channel)
-
     def on_scale_change(self, value):
         self.channel.color.scale = value
         self.map.escala.color = self.channel.color.scale
@@ -83,7 +75,7 @@ class GestorHeaderAFM:
         self.channel.color.limInf = value
         self._redraw(cmap = True)
         
-    def _redraw(self, cmap = False, lims = False, Z = False):
+    def _redraw(self, cmap = False, lims = False):
         ch = self.channel
 
         if cmap: 
@@ -96,20 +88,7 @@ class GestorHeaderAFM:
             self.map.cbar.limInf.set_text(f"{ch.lims[0]:g}" + (f" {ch.units}" if ch.units else ""))
             self.map.cbar.limSup.set_text(f"{ch.lims[1]:g}" + (f" {ch.units}" if ch.units else ""))
 
-        if Z: self.map.image.set_data(ch.Z)
-
         self.map.canvas.draw_idle()
-
-    def _update_spectra_Z(self, channel):
-        x = channel.xdata['nm']
-        spectra = channel.spectra
-
-        lim_inf, lim_sup = channel.spectra_lims
-        mask = ((x >= lim_inf) & (x <= lim_sup))
-
-        channel.Z = np.nansum(spectra[:, :, mask], axis=2)
-        channel.lims = np.percentile(channel.Z, [0.2, 99.8])
-        self._redraw(lims = True, Z = True)
 
 class CrearHeaderAFM:
     def __init__(self, parent, controller):
@@ -118,7 +97,6 @@ class CrearHeaderAFM:
         self.frame = Frame(parent)
         self.frame.columnconfigure(0, weight=1)
 
-        if self.channel.spectra is not None: self._editar_limits_spectra()
         self._editar_limits()
         self._color_mapa_escala()
 
@@ -172,20 +150,6 @@ class CrearHeaderAFM:
         col_lims = build_grid(self.frame, _color_lims(), row=0, col=9, button=False)
         self.widgets_lims.update(col_lims)
 
-    def _editar_limits_spectra(self):
-        def _grid_lims_spectra():
-            return [
-                (("LimSup", float, self.channel.spectra_lims[1]),
-                 ("Espectre màxim:", 'entry', {"width": 10}),
-                 (self.controller.on_spectra_lim_sup_change, "args", {})),
-
-                (("LimInf", float, self.channel.spectra_lims[0]),
-                 ("Espectre mínim:", 'entry', {"width": 10}),
-                 (self.controller.on_spectra_lim_inf_change, "args", {}))
-            ]
-
-        self.widgets_spectra_lims = build_grid(self.frame, _grid_lims_spectra(), row=0, col=1, button=False)
-
     def refresh(self, ch = None): # Canvia la capçalera en canviar de canal.
         if not ch: return
 
@@ -210,235 +174,198 @@ class CrearHeaderAFM:
         self.widgets_lims["limInf"].value.set(f"{ch.lims[0]:g}")
         self.widgets_lims["limSup"].value.set(f"{ch.lims[1]:g}")
 
-        if self.channel.spectra is not None:
-            for widget in self.widgets_spectra_lims.values():
-                widget.grid() if ch.spectra is not None else widget.grid_remove()
+class GestorHeaderSpectrum:
+    def __init__(self, map):
+        self.map = map
+        self.view = CrearHeaderSpectrum(parent=self.map.model.content, controller=self)
 
-class GestorHeaderRAMAN:
-    def __init__(self, filedata, frame):
-        self.file = filedata
-        self.view = CrearHeaderRAMAN(parent=frame, controller=self)
+        self.xlabels = {'nm': 'λ (nm)', 'eV': 'E (eV)', '1/cm': r'Raman Shift (cm⁻¹)'}
 
-    def new_cmap(self, event):
-        self.file.image.set_cmap(event.widget.get())
-        self.file.view.canvas.draw()
+    @property
+    def channel(self):
+        return self.map.channel
 
-    def new_spectype(self, event):
-        self.file.spec_type = event.widget.get()
-        self.file.label['track_xaxis'].configure(text=self.file.specs[self.file.spec_type].xtitle)
-        if not hasattr(self.file, 'posx') or not hasattr(self.file, 'posy'): return
-        self.file.lims = {}
-        self.file.plot_spec()
+    def on_lim_inf_change(self, value):
+        if value >= self.channel.lims[1]:
+            messagebox.showerror(
+                "Error en actualitzar la gràfica",
+                "El límit inferior ha de ser menor que el superior."
+            )
 
-    def set_speclims(self, event, key):
-        self.file.lims[key] = float(event.widget.get())
-        self.file.ax[1].set_xlim(self.file.lims['spec_left'], self.file.lims['spec_right'])
-        self.file.ax[1].set_ylim(self.file.lims['spec_bot'], self.file.lims['spec_top'])
-        self.file.canvas.draw()
-
-    def set_etiqs(self):
-        if not hasattr(self.file, 'etiquette'): return
-
-        for element in self.file.etiquette.values(): element.set_visible(self.view.object['spec_etiq'].value.get())
-        self.file.canvas.draw_idle()
-
-    def mostrar_dades(self):
-        if not hasattr(self.file, 'dades'):
             return
 
-        self.file.dades.set_visible(self.view.object['spec_data'].value.get())
-        self.file.canvas.draw_idle()
+        self.channel.lims[0] = value
+        self._redraw(lims=True)
 
-    def map_lims(self, event, lim = 'Inf'):
-        match lim:
-            case 'Inf': self.file.limInf = float(event.widget.get())
-            case 'Sup': self.file.limSup = float(event.widget.get())
+    def on_lim_sup_change(self, value):
+        if value <= self.channel.lims[0]:
+            messagebox.showerror(
+                "Error en actualitzar la gràfica",
+                "El límit inferior ha de ser menor que el superior."
+            )
+            return
 
-        lims = self.file.limInf, self.file.limSup
-        mapa.update_cbar(self.file.cax, lims, units = self.file.specs[self.file.spec_type].units[self.file.nommag] if not self.file.nommap == 'Ràtio (P2/P1)' else '')
-        self.file.image.set_clim(*lims)
-        self.file.canvas.draw()
+        self.channel.lims[1] = value
+        self._redraw(lims=True)
 
-class CrearHeaderRAMAN:
+    def on_spectra_left_change(self, value):
+        self.channel.spectra_lims[0] = value
+        self.map.axis.set_xlim(value, self.view.widgets_xlim['right'].value.get())
+        self.map.canvas.draw_idle()
+        self._update_spectra_Z(self.channel)
+
+    def on_spectra_right_change(self, value):
+        self.channel.spectra_lims[1] = value
+        self.map.axis.set_xlim(self.view.widgets_xlim['left'].value.get(), value)
+        self.map.canvas.draw_idle()
+        self._update_spectra_Z(self.channel)
+
+    def on_spectra_bottom_change(self, value):
+        self.map.axis.set_ylim(value, self.view.widgets_ylim['top'].value.get())
+        self.map.canvas.draw_idle()
+
+    def on_spectra_top_change(self, value):
+        self.map.axis.set_ylim(self.view.widgets_ylim['bottom'].value.get(), value)
+        self.map.canvas.draw_idle()
+
+    def on_units_change(self, value):
+        self.map.axis.set_xlabel(self.xlabels[value])
+        spec = self.map.line.get_ydata()
+        xdata = self.channel.xdata[value]
+
+        self.map.line.set_data(xdata, spec)
+        self.channel.spectra_lims = round(min(xdata), 3), round(max(xdata), 3)
+        self.map.axis.set_xlim(*self.channel.spectra_lims)
+
+        self.view.widgets_xlim['left'].value.set(self.channel.spectra_lims[0])
+        self.view.widgets_xlim['right'].value.set(self.channel.spectra_lims[1])
+        self.map.footer.view.widgets['track_x']._label.config(text = self.xlabels[value])
+        self.map.canvas.draw_idle()
+        self._update_spectra_Z(self.channel)
+
+        return
+
+    def on_data_change(self, value):
+        if not hasattr(self.map, 'line'): return
+
+        self.map.line.set_visible(value)
+        self.map.canvas.draw_idle()
+
+    def on_log_change(self, value):
+        if not hasattr(self.map, 'line'): return
+
+        if value:
+            self.map.axis.set_yscale('log')
+            self.view.widgets_ylim['bottom'].value.set(1)
+            self.map.axis.set_ylim(bottom = 1)
+        else:
+            self.map.axis.set_yscale('linear')
+            self.view.widgets_ylim['bottom'].value.set(0)
+            self.map.axis.set_ylim(bottom = 0)
+
+        self.map.canvas.draw_idle()
+
+    def _redraw(self, lims=False, Z=False):
+        ch = self.channel
+        map = self.map.model.map
+
+        map.image.set_clim(*ch.lims)
+        map.cbar.limInf.set_text(f"{ch.lims[0]:g}" + (f" {ch.units}" if ch.units else ""))
+        map.cbar.limSup.set_text(f"{ch.lims[1]:g}" + (f" {ch.units}" if ch.units else ""))
+        map.image.set_data(ch.Z)
+
+        map.canvas.draw_idle()
+
+    def _update_spectra_Z(self, channel):
+        x = channel.xdata[self.view.widgets['units'].value.get()]
+        spectra = channel.spectra
+
+        lim_inf, lim_sup = channel.spectra_lims
+        mask = ((x >= lim_inf) & (x <= lim_sup))
+
+        channel.Z = np.nansum(spectra[:, :, mask], axis=2)
+        channel.update_lims()
+
+        self.map.model.map.header.view.widgets_lims["limInf"].value.set(channel.lims[0])
+        self.map.model.map.header.view.widgets_lims["limSup"].value.set(channel.lims[1])
+
+        self._redraw(lims=True, Z=True)
+
+class CrearHeaderSpectrum:
     def __init__(self, parent, controller):
-        self.parent = parent
         self.controller = controller
-        self.label = {}
-        self.object = {}
 
-        marcTop = Frame(self.parent)
-        marcTop.grid(row = 0, column = 0, sticky = 'ew')
-        marcTop.grid_columnconfigure(0, minsize=200)
+        self.frame = Frame(parent)
+        self.frame.columnconfigure(0, weight=1)
 
-        opcionsMap = ["Intensitat", "Pics", "P2-P1", "P2/P1"]
-        self.label['map'] = Label(marcTop, text='Mapa:')
-        self.label['map'].grid(row=0, column=1, pady=5, padx=10, sticky='e')
-        self.object['map'] = Combobox(marcTop, textvariable=StringVar(marcTop, value=opcionsMap[0]), values=opcionsMap,
-                                          state='readonly', width=8)
-        self.object['map'].grid(row=0, column=2, pady=5, padx=0, sticky='w')
-        self.object['map'].bind("<<ComboboxSelected>>", lambda event: self.controller.plt_map(event, attr='nommap'))
-        self.object['map'].current(0)
+        self._laser_units()
+        self._editar_limits_spectra()
+        self._marks()
 
-        self.label['fits'] = Label(marcTop, text='Ajust:')
-        self.label['fits'].grid(row=0, column=3, pady=5, padx=10, sticky='e')
-        self.object['fits'] = Combobox(marcTop, textvariable=StringVar(marcTop, value=[]), values=[], state='readonly',
-                                           width=12)
-        self.object['fits'].grid(row=0, column=4, pady=5, padx=0, sticky='w')
-        self.object['fits'].bind("<<ComboboxSelected>>", lambda event: self.plt_map(event, attr='nomfit'))
+    @property
+    def channel(self):
+        return self.controller.channel
 
-        self.label['pic1'] = Label(marcTop, text='P1:', width=3)
-        self.label['pic1'].grid(row=0, column=5, pady=5, padx=5, sticky='e')
-        self.object['pic1'] = Combobox(marcTop, textvariable=StringVar(marcTop, value=[]), values=[], state='readonly',
-                                           width=5)
-        self.object['pic1'].grid(row=0, column=6, pady=5, padx=0, sticky='w')
-        self.object['pic1'].bind("<<ComboboxSelected>>", lambda event: self.plt_map(event, attr='pic1'))
+    def _laser_units(self):
+        def _grid():
+            return [
+                (("laser", str, self.controller.map.model.controller.laser),
+                 ('λ₀ (nm):', 'entry', {"state": 'readonly', "width": 8}),
+                 (self.controller.on_units_change, "args")),
 
-        self.label['pic2'] = Label(marcTop, text='P2:', width=3)
-        self.label['pic2'].grid(row=0, column=7, pady=5, padx=5, sticky='e')
-        self.object['pic2'] = Combobox(marcTop, textvariable=StringVar(marcTop, value=[]), values=[], state='readonly',
-                                           width=5)
-        self.object['pic2'].grid(row=0, column=8, pady=5, padx=0, sticky='w')
-        self.object['pic2'].bind("<<ComboboxSelected>>", lambda event: self.plt_map(event, attr='pic2'))
+                (("units", str, 'nm'),
+                 ("Unitats", 'cb', {"options": ["nm", "eV", "1/cm"], "width": 8}),
+                 (self.controller.on_units_change, "args"))
+            ]
 
-        self.label['mag'] = Label(marcTop, text='Magnitud:')
-        self.label['mag'].grid(row=0, column=10, pady=5, padx=10)
-        self.object['mag'] = Combobox(marcTop, textvariable=StringVar(marcTop, value="Intensity"),
-                                          values=["Intensity"], state='readonly', width=10)
-        self.object['mag'].grid(row=0, column=11, pady=5, padx=0)
-        self.object['mag'].bind("<<ComboboxSelected>>", lambda event: self.plt_map(event, attr='nommag'))
-        self.object['mag'].current(0)
+        self.widgets = build_grid(self.frame, _grid(), row=0, col=1, button=False)
 
-        marcTrack = Frame(self.parent)
-        marcTrack.grid(row=1, column=0, sticky='ew')
+    def _editar_limits_spectra(self):
+        def _grid_xlim_spectra():
+            return [
+                (("left", float, self.channel.spectra_lims[0]),
+                 ("Eix X", 'entry', {"width": 10}),
+                 (self.controller.on_spectra_left_change, "args")),
 
-        marcTrack.grid_columnconfigure(0, minsize=200)
-        marcTrack.grid_columnconfigure(7, minsize=200)
+                (("right", float, self.channel.spectra_lims[1]),
+                 ("", 'entry', {"width": 10}),
+                 (self.controller.on_spectra_right_change, "args"))
+            ]
 
-        set_valuex = IntVar(marcTrack, value='')
-        self.label['track_x'] = Label(marcTrack, text='X:', width=3)
-        self.label['track_x'].grid(row=0, column=1, pady=5, padx=5, sticky='e')
-        self.object['track_x'] = Entry(marcTrack, textvariable=set_valuex, state='readonly', width=3)
-        self.object['track_x'].grid(row=0, column=2, pady=5, padx=0, sticky='w')
-        self.object['track_x'].value = set_valuex
+        def _grid_ylim_spectra():
+            return [
+                (("bottom", float, 0),
+                 ("Eix Y", 'entry', {"width": 10}),
+                 (self.controller.on_spectra_bottom_change, "args")),
 
-        set_valuey = IntVar(marcTrack, value='')
-        self.label['track_y'] = Label(marcTrack, text='Y:', width=3)
-        self.label['track_y'].grid(row=0, column=3, pady=5, padx=5, sticky='e')
-        self.object['track_y'] = Entry(marcTrack, textvariable=set_valuey, state='readonly', width=3)
-        self.object['track_y'].grid(row=0, column=4, pady=5, padx=0, sticky='w')
-        self.object['track_y'].value = set_valuey
+                (("top", float, 1),
+                 ("", 'entry', {"width": 10}),
+                 (self.controller.on_spectra_top_change, "args"))
+            ]
 
-        set_valuez = DoubleVar(marcTrack, value='')
-        self.label['track_z'] = Label(marcTrack, text='Intensity:', width=10)
-        self.label['track_z'].grid(row=0, column=5, pady=5, padx=5, sticky='e')
-        self.object['track_z'] = Entry(marcTrack, textvariable=set_valuez, state='readonly', width=10)
-        self.object['track_z'].grid(row=0, column=6, pady=5, padx=0, sticky='w')
-        self.object['track_z'].value = set_valuez
+        self.widgets_xlim = build_grid(self.frame, _grid_xlim_spectra(), row=0, col=3, button=False, vertical = False)
+        self.widgets_ylim = build_grid(self.frame, _grid_ylim_spectra(), row=1, col=3, button=False, vertical = False)
 
-        set_valuexax = IntVar(marcTrack, value='')
-        self.label['track_xaxis'] = Label(marcTrack, text='λ (nm)', width=6)
-        self.label['track_xaxis'].grid(row=0, column=8, pady=5, padx=5, sticky='e')
-        self.object['track_xaxis'] = Entry(marcTrack, textvariable=set_valuexax, state='readonly', width=5)
-        self.object['track_xaxis'].grid(row=0, column=9, pady=5, padx=0, sticky='w')
-        self.object['track_xaxis'].value = set_valuexax
+    def _marks(self):
+        def _grid_data_bkg():
+            return [
+                (("data", bool, True),
+                 ("Dades:", 'checkbutton'),
+                 (self.controller.on_data_change, "args")),
+                (("bkg", bool, True),
+                 ("Fons:", 'checkbutton'),
+                 (self.controller.on_data_change, "args"))
+            ]
 
-        set_valueyax = IntVar(marcTrack, value='')
-        self.label['track_yaxis'] = Label(marcTrack, text='Intensity (uA):', width=10)
-        self.label['track_yaxis'].grid(row=0, column=10, pady=5, padx=5, sticky='e')
-        self.object['track_yaxis'] = Entry(marcTrack, textvariable=set_valueyax, state='readonly', width=5)
-        self.object['track_yaxis'].grid(row=0, column=11, pady=5, padx=0, sticky='w')
-        self.object['track_yaxis'].value = set_valueyax
+        def _grid_log_etiq():
+            return [
+                (("log", bool, False),
+                 ("Log Y:", 'checkbutton'),
+                 (self.controller.on_log_change, "args")),
+                (("etiq", bool, False),
+                 ("Etiquetes:", 'checkbutton'),
+                 (self.controller.on_log_change, "args"))
+            ]
 
-        marcLims = Frame(self.parent)
-        marcLims.grid(row=2, column=0, sticky="nsew")
-
-        set_valueCM = DoubleVar(marcLims, value='hot')
-        self.label['cmap'] = Label(marcLims, text='Color:', width=5)
-        self.label['cmap'].grid(row=0, column=1, pady=5, padx=5, sticky='e')
-        self.object['cmap'] = Combobox(marcLims, textvariable=set_valueCM, values=cmaps_matplotlib, state='readonly',
-                                           width=8)
-        self.object['cmap'].grid(row=0, column=2, pady=5, padx=0, sticky='w')
-        self.object['cmap'].bind("<<ComboboxSelected>>", self.controller.new_cmap)
-        self.object['cmap'].value = set_valueCM
-
-        set_valueMS = DoubleVar(marcLims, value='')
-        self.label['map_limSup'] = Label(marcLims, text='Límit superior:', width=12)
-        self.label['map_limSup'].grid(row=0, column=3, pady=5, padx=5, sticky='e')
-        self.object['map_limSup'] = Entry(marcLims, textvariable=set_valueMS, width=6)
-        self.object['map_limSup'].grid(row=0, column=4, pady=5, padx=0, sticky='w')
-        self.object['map_limSup'].bind('<Return>', lambda e: self.controller.map_lims(e, lim='Sup'))
-        self.object['map_limSup'].value = set_valueMS
-
-        set_valueMI = DoubleVar(marcLims, value='')
-        self.label['map_limInf'] = Label(marcLims, text='Límit inferior:', width=12)
-        self.label['map_limInf'].grid(row=1, column=3, pady=5, padx=5, sticky='e')
-        self.object['map_limInf'] = Entry(marcLims, textvariable=set_valueMI, width=6)
-        self.object['map_limInf'].grid(row=1, column=4, pady=5, padx=0, sticky='w')
-        self.object['map_limInf'].bind('<Return>', lambda e: self.controller.map_lims(e, lim='Inf'))
-        self.object['map_limInf'].value = set_valueMI
-
-        set_valueL = DoubleVar(marcLims, value='')
-        self.label['laser'] = Label(marcLims, text='λ₀ (nm):', width=7)
-        self.label['laser'].grid(row=0, column=6, pady=5, padx=5, sticky='e')
-        self.object['laser'] = Entry(marcLims, textvariable=set_valueL, width=6, state='readonly')
-        self.object['laser'].grid(row=0, column=7, pady=5, padx=0, sticky='w')
-        self.object['laser'].value = set_valueL
-
-        self.spec_type = 'nm'
-        set_valueST = DoubleVar(marcLims, value='nm')
-        self.label['spec_type'] = Label(marcLims, text='Unitats:', width=7)
-        self.label['spec_type'].grid(row=1, column=6, pady=5, padx=5, sticky='e')
-        self.object['spec_type'] = Combobox(marcLims, textvariable=set_valueST, values=['nm', 'eV', '1/cm'],
-                                            state='readonly', width=4)
-        self.object['spec_type'].grid(row=1, column=7, pady=5, padx=0, sticky='w')
-        self.object['spec_type'].bind("<<ComboboxSelected>>", self.controller.new_spectype)
-        self.object['spec_type'].value = set_valueST
-
-        self.lims = {}
-        set_valueLeft = DoubleVar(marcLims, value=0)
-        self.label['spec_xaxis'] = Label(marcLims, text='Eix X:', width=6)
-        self.label['spec_xaxis'].grid(row=0, column=8, pady=5, padx=5, sticky='e')
-        self.object['spec_left'] = Entry(marcLims, textvariable=set_valueLeft, width=6)
-        self.object['spec_left'].grid(row=0, column=9, pady=5, padx=0, sticky='w')
-        self.object['spec_left'].bind('<Return>', lambda e: self.controller.set_speclims(e, key='spec_left'))
-        self.object['spec_left'].value = set_valueLeft
-
-        set_valueRight = DoubleVar(marcLims, value=1)
-        self.object['spec_right'] = Entry(marcLims, textvariable=set_valueRight, width=6)
-        self.object['spec_right'].grid(row=0, column=10, pady=5, padx=0, sticky='w')
-        self.object['spec_right'].bind('<Return>', lambda e: self.controller.set_speclims(e, key='spec_right'))
-        self.object['spec_right'].value = set_valueRight
-
-        set_valueBot = DoubleVar(marcLims, value=0)
-        self.label['spec_yaxis'] = Label(marcLims, text='Eix Y:', width=6)
-        self.label['spec_yaxis'].grid(row=1, column=8, pady=5, padx=5, sticky='e')
-        self.object['spec_bot'] = Entry(marcLims, textvariable=set_valueBot, width=6)
-        self.object['spec_bot'].grid(row=1, column=9, pady=5, padx=0, sticky='w')
-        self.object['spec_bot'].bind('<Return>', lambda e: self.controller.set_speclims(e, key='spec_bot'))
-        self.object['spec_bot'].value = set_valueBot
-
-        set_valueTop = DoubleVar(marcLims, value=1)
-        self.object['spec_top'] = Entry(marcLims, textvariable=set_valueTop, width=6)
-        self.object['spec_top'].grid(row=1, column=10, pady=5, padx=0, sticky='w')
-        self.object['spec_top'].bind('<Return>', lambda e: self.controller.set_speclims(e, key='spec_top'))
-        self.object['spec_top'].value = set_valueTop
-
-        set_valueDades = BooleanVar(marcLims, value=True)
-        self.object['spec_data'] = Checkbutton(marcLims, text="Dades", variable=set_valueDades, command=self.controller.mostrar_dades,
-                                               indicatoron = True)
-        self.object['spec_data'].grid(row=0, column=11, pady=5, padx=5, sticky='e')
-        self.object['spec_data'].value = set_valueDades
-
-        set_valueBkg = BooleanVar(marcLims, value=True)
-        self.object['spec_bkg'] = Checkbutton(marcLims, text="Fons", variable=set_valueBkg, command=self.controller.mostrar_dades)
-        self.object['spec_bkg'].grid(row=1, column=11, pady=5, padx=5, sticky='e')
-        self.object['spec_bkg'].value = set_valueBkg
-
-        set_valueEtiq = BooleanVar(marcLims, value=True)
-        self.object['spec_etiq'] = Checkbutton(marcLims, text="Etiquetes", variable=set_valueEtiq, command=self.controller.set_etiqs,
-                                               indicatoron = True)
-        self.object['spec_etiq'].grid(row=1, column=12, pady=5, padx=5, sticky='e')
-        self.object['spec_etiq'].value = set_valueEtiq
-
-        marcLims.grid_columnconfigure(0, minsize=200)
-        marcLims.grid_columnconfigure(5, minsize=100)
+        self.marks = build_grid(self.frame, _grid_data_bkg(), row=0, col=7, button=False)
+        self.marks.update(build_grid(self.frame, _grid_log_etiq(), row=0, col=9, button=False))

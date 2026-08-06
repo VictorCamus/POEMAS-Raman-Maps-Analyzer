@@ -1,4 +1,5 @@
 import numpy as np
+from numpy.typing import NDArray
 from dataclasses import dataclass, field
 
 from process.basics import truncar_significatives
@@ -9,7 +10,7 @@ class ChannelData:  # Crea canals per a cada tipus de mapa dins d'un fitxer.
     name: str
     Z: np.ndarray | None = None
     units: str = None
-    lims: list[float] = None
+    lims: NDArray[np.floating] | None = None
     xdata: dict = field(default_factory = dict)
     spectra: np.ndarray = None
     spectra_lims: list[float] = None
@@ -21,24 +22,24 @@ class ChannelData:  # Crea canals per a cada tipus de mapa dins d'un fitxer.
         if self.Z is None and self.spectra is not None:
             self.spectra = ccd_correct(self.xdata['nm'], self.spectra)
             self.Z = np.nansum(self.spectra, axis = 2)
-            self.spectra_lims = [self.xdata['nm'][0], self.xdata['nm'][-1]]
+            self.spectra_lims = [round(self.xdata['nm'][0], 3), round(self.xdata['nm'][-1], 3)]
 
-        if self.lims is None: self.lims, self.Z = self.set_lims(self.Z, self.name)
+        if self.lims is None: self.update_lims()
 
     @property
     def ax_title(self):
         return f'{self.name} ({self.units})' if self.units else f'{self.name}'
 
-    @staticmethod
-    def set_lims(z, name):
-        if name == 'Grain':
-            return z, np.array([0, 1])
+    def update_lims(self):
+        if self.name == 'Grain':
+            self.lims = np.array([0, 1])
+            return
 
-        vmin, vmax = np.percentile(z, [0.2, 99.8])
+        vmin, vmax = np.percentile(self.Z, [0.2, 99.8])
 
         # 3. Estructura match-case per a la lògica segons el tipus
-        if name == 'Height':
-            z -= vmin
+        if self.name == 'Height':
+            self.Z -= vmin
             vmax -= vmin
             vmin = 0.0
 
@@ -46,12 +47,12 @@ class ChannelData:  # Crea canals per a cada tipus de mapa dins d'un fitxer.
         vmin = truncar_significatives(vmin, 2, cap_a='avall')
         vmax = truncar_significatives(vmax, 2, cap_a='amunt')
 
-        # 5. Seguretat per evitar límits idèntics
+        # 5. Correcció per evitar límits idèntics
         if vmin == vmax:
             vmin -= 5
             vmax += 5
 
-        return np.array([vmin, vmax]), z
+        self.lims = np.array([vmin, vmax])
 
 @dataclass
 class Colors:
@@ -67,4 +68,4 @@ class Colors:
 
     @property
     def lims(self):
-        return (self.limInf, self.limSup)
+        return self.limInf, self.limSup

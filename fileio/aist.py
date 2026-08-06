@@ -339,7 +339,7 @@ def load(file_list, fileclass):
 
                 spectra = d['spectra'].reshape(N[1], N[0], d['spectra'].shape[1]).copy()
                 laser = d['laser']
-                channels['Spectra'] = ChannelData(name = 'Spectra', units = d['units']['z'], lims = None, xdata = xdata, spectra = spectra)
+                channels['Spectra'] = ChannelData(name = 'Spectra', units = 'cts', lims = None, xdata = xdata, spectra = spectra)
 
     data = {'channel': channels, 'geometry': Geometry(N, mida), 'objects': ObjectData(), 'laser': laser}
 

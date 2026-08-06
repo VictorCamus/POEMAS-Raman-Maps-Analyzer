@@ -1,5 +1,5 @@
 from tkinter.ttk import Label, Combobox, Frame
-from tkinter import Entry, Label, Scale, messagebox, StringVar, DoubleVar, BooleanVar, Variable, Toplevel, Button, Radiobutton
+from tkinter import Entry, Label, Scale, messagebox, StringVar, DoubleVar, BooleanVar, Variable, Toplevel, Button, Radiobutton, Checkbutton
 from matplotlib import colors as mcolors
 
 class ObjectVar(Variable):
@@ -52,7 +52,13 @@ def rgba_to_name(rgba):
     return mcolors.to_hex(rgba)  # si no troba, retorna hex
 
 def create_widget(type_widget, frame, text_label = None, row=0, col=0, key = None, set_value = None, callback = None, **kwargs): # Afegeix un label davant d'un objecte (entry, combobox...)
-    WIDGET_MAP = {'cb': add_combobox, 'entry': add_entry, 'scale': add_scale, 'button': add_button, 'radiobutton': add_radiobuttons, 'colorcb': add_colorcombobox}
+    WIDGET_MAP = {'cb': add_combobox,
+                  'entry': add_entry,
+                  'scale': add_scale,
+                  'button': add_button,
+                  'radiobutton': add_radiobuttons,
+                  'checkbutton': add_checkbutton,
+                  'colorcb': add_colorcombobox}
     
     def func(event=None):
         try:
@@ -81,6 +87,11 @@ def add_entry(func, frame, set_value=None, state = 'normal', width = 18):
 
 def add_button(func, frame, set_value=None):
     return Button(frame, textvariable=set_value, command=func, font=('Helvetica', 9, 'bold'), background = '#3a7ff6', fg = 'white')
+
+def add_checkbutton(func, frame, set_value=None, text="", **kwargs):
+    return Checkbutton(frame, text=text, variable=set_value, command=func,
+        bg='#2b2b2b', fg='white', selectcolor='#444444', activebackground='#2b2b2b',
+        activeforeground='white', anchor='w', **kwargs)
 
 def add_radiobuttons(func, frame, set_value=None, vertical=True, options=None):
     container = Frame(frame)

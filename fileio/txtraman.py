@@ -12,7 +12,7 @@ def load(file_list, fileclass):
                 laser = float(valor[:3])
                 is_laser = False
             elif linia.startswith('#AxisUnit[1]='):
-                units = linia.split('=', 1)[1].strip()
+                xunits = linia.split('=', 1)[1].strip()
                 break
     
     dades = genfromtxt(file, delimiter = '\t') # q: [0,2:]. x: [1:,0]. y: [1:,1]. I: [1:,2:]
@@ -27,7 +27,7 @@ def load(file_list, fileclass):
     mida = (x[1]-x[0])*N[0], (y[1]-y[0])*N[1]
 
     xdata = {}; channels = {}
-    match units:
+    match xunits:
         case 'nm': 
             xdata['nm'] = q
             xdata['eV'] = nm_to_eV(q)
@@ -43,7 +43,7 @@ def load(file_list, fileclass):
             xdata['eV'] = raman_to_eV(q, laser)
             xdata['1/cm'] = q
 
-    channels['Spectra'] = ChannelData(name='Spectra', units = units, xdata=xdata, spectra=spectra)
+    channels['Spectra'] = ChannelData(name='Spectra', units = 'cts', xdata=xdata, spectra=spectra)
     data = {'channel': channels, 'geometry': Geometry(N, mida), 'objects': ObjectData(), 'laser': laser}
 
     return fileclass(**data)

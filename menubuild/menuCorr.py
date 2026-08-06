@@ -120,5 +120,5 @@ class LevelMaps(BaseMapWindow):
 
         # --- FINAL ---
         self.z = z
-        self.lims, self.z = ch.set_lims(self.z, ch.name)
+        ch.update_lims()
         self.update_fig()

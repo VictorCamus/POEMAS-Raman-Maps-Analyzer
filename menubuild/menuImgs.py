@@ -37,8 +37,12 @@ class GestorImatges(BaseMenu): # Classe que gestiona les accions relacionades am
 
         # --- Rotar canals ---
         for ch in file.channel.values():
-            if rot != 0: ch.Z = np.rot90(ch.Z, k=rot)
-            if flip: ch.Z = np.flip(ch.Z, axis = 1)
+            if rot != 0:
+                ch.Z = np.rot90(ch.Z, k=rot)
+                if ch.spectra is not None: ch.spectra = np.rot90(ch.spectra, k=rot)
+            if flip:
+                ch.Z = np.flip(ch.Z, axis = 1)
+                if ch.spectra is not None: ch.spectra = np.flip(ch.spectra, axis = 1)
 
         file.view.map.image.set_data(channel.Z)
         self._update_rotation(file, rot, flip)

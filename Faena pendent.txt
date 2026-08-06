@@ -6,18 +6,14 @@ process: smooth
 window: -
 
 Aplicació (WSxM single):
-	- Revisar l'arxiu.
 	- Veure per què de vegades no s'apliquen bindings de canvi de pestanya.
 
 Revisió general:
-	- Reordenar com siga més lògic.
 	- Mida diferent de les figures on el frame no ha sigut obert prèviament.
 
 FAENA AGOST:
 
 - Adaptar el programa MapSpec al WSxM:
-    · Frame per als espectres.
-    · Capçalera per als espectres.
     · Comboboxes o pestanyes per als canals de fits.
     · Operacions entre canals.
     · Càlcul d'ajustos.
