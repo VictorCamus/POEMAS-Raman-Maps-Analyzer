@@ -9,7 +9,7 @@ from drawing.arrows import FletxaInteractiva
 from drawing.plots import base_plot
 from .base import BaseMenu
 from window import BaseFigureWindow
-from classes.object import ProfileData
+from classes.objects import ProfileData
 from process.basics import get_line
 
 class GestorPerfils(BaseMenu):  # Classe que gestiona les accions relacionades amb els perfils de fletxes.

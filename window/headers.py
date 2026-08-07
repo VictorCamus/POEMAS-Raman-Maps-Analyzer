@@ -1,22 +1,25 @@
-from tkinter.ttk import Frame, Label, Entry, Combobox
-from tkinter import messagebox, IntVar, BooleanVar, DoubleVar, StringVar, Checkbutton
+import numpy as np
+
+from tkinter.ttk import Frame
+from tkinter import messagebox
 from .labels import build_grid
 from drawing.colormap import cmaps
-from drawing.colormap import cmaps_matplotlib
-from drawing import mapdraw as mapa
-import numpy as np
 
 # Fitxer que crea la capçalera per a les pestanyes del notebook.
 # Conté també les mètodes per afegir etiquetes, camps d'entrada i comboboxes a la capçalera.
 
-class GestorHeaderAFM:
+class HeaderMap:
     def __init__(self, map):
         self.map = map
-        self.view = CrearHeaderAFM(parent=self.map.model.content, controller=self)
+        self.view = ViewHeaderMap(parent=self.map.model.content, controller=self)
 
     @property
     def channel(self):
         return self.map.channel
+
+    @property
+    def frame(self):
+        return self.view.frame
 
     def set_channel(self, channel):
         self.view.refresh(channel)
@@ -90,7 +93,7 @@ class GestorHeaderAFM:
 
         self.map.canvas.draw_idle()
 
-class CrearHeaderAFM:
+class ViewHeaderMap:
     def __init__(self, parent, controller):
         self.controller = controller
 
@@ -109,10 +112,10 @@ class CrearHeaderAFM:
             return [
                 (("cmap_c", str, self.channel.name),
                  ("Color mapa:", 'cb', {"options": cmaps, "width": '10'}),
-                 (self.controller.on_cmap_change, "args", {})),
+                 (self.controller.on_cmap_change, "args")),
                 (("cscale", str, 'w'),
                  ("Color escala:", 'radiobutton', {"options": {'B': 'w', 'N': 'k'}, 'vertical': False}),
-                 (self.controller.on_scale_change, "args", {})),
+                 (self.controller.on_scale_change, "args")),
             ]
 
         def _grid_crev():
@@ -131,19 +134,19 @@ class CrearHeaderAFM:
             return [
                 (("limSup", float, self.channel.lims[1]),
                  ("Valor màxim:", 'entry', {"width": 10}),
-                 (self.controller.on_lim_sup_change, "args", {})),
+                 (self.controller.on_lim_sup_change, "args")),
                 (("limInf", float, self.channel.lims[0]),
                  ("Valor mínim:", 'entry', {"width": 10}),
-                 (self.controller.on_lim_inf_change, "args", {}))
+                 (self.controller.on_lim_inf_change, "args"))
             ]
         def _color_lims():
             return [
                 (("colSup", str, self.channel.color.limSup),
                  (None, 'radiobutton', {'options': {'B': 'w', 'N': 'k'}, 'vertical': False}),
-                 (self.controller.on_col_sup_change, "args", {})),
+                 (self.controller.on_col_sup_change, "args")),
                 (("colInf", str, self.channel.color.limInf),
                  (None, 'radiobutton', {'options': {'B': 'w', 'N': 'k'}, 'vertical': False}),
-                 (self.controller.on_col_inf_change, "args", {}))
+                 (self.controller.on_col_inf_change, "args"))
             ]
 
         self.widgets_lims = build_grid(self.frame, _grid_lims(), row=0, col=7, button=False)
@@ -174,16 +177,20 @@ class CrearHeaderAFM:
         self.widgets_lims["limInf"].value.set(f"{ch.lims[0]:g}")
         self.widgets_lims["limSup"].value.set(f"{ch.lims[1]:g}")
 
-class GestorHeaderSpectrum:
+class HeaderSpec:
     def __init__(self, map):
         self.map = map
-        self.view = CrearHeaderSpectrum(parent=self.map.model.content, controller=self)
+        self.view = ViewHeaderSpec(parent=self.map.model.content, controller=self)
 
         self.xlabels = {'nm': 'λ (nm)', 'eV': 'E (eV)', '1/cm': r'Raman Shift (cm⁻¹)'}
 
     @property
     def channel(self):
         return self.map.channel
+
+    @property
+    def frame(self):
+        return self.view.frame
 
     def on_lim_inf_change(self, value):
         if value >= self.channel.lims[1]:
@@ -234,7 +241,7 @@ class GestorHeaderSpectrum:
         xdata = self.channel.xdata[value]
 
         self.map.line.set_data(xdata, spec)
-        self.channel.spectra_lims = round(min(xdata), 3), round(max(xdata), 3)
+        self.channel.spectra_lims = [round(min(xdata), 3), round(max(xdata), 3)]
         self.map.axis.set_xlim(*self.channel.spectra_lims)
 
         self.view.widgets_xlim['left'].value.set(self.channel.spectra_lims[0])
@@ -291,7 +298,7 @@ class GestorHeaderSpectrum:
 
         self._redraw(lims=True, Z=True)
 
-class CrearHeaderSpectrum:
+class ViewHeaderSpec:
     def __init__(self, parent, controller):
         self.controller = controller
 
@@ -310,8 +317,7 @@ class CrearHeaderSpectrum:
         def _grid():
             return [
                 (("laser", str, self.controller.map.model.controller.laser),
-                 ('λ₀ (nm):', 'entry', {"state": 'readonly', "width": 8}),
-                 (self.controller.on_units_change, "args")),
+                 ('λ₀ (nm):', 'entry', {"state": 'readonly', "width": 8})),
 
                 (("units", str, 'nm'),
                  ("Unitats", 'cb', {"options": ["nm", "eV", "1/cm"], "width": 8}),

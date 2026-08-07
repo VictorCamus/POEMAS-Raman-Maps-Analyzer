@@ -2,6 +2,22 @@ from tkinter.ttk import Label, Combobox, Frame
 from tkinter import Entry, Label, Scale, messagebox, StringVar, DoubleVar, BooleanVar, Variable, Toplevel, Button, Radiobutton, Checkbutton
 from matplotlib import colors as mcolors
 
+from dataclasses import dataclass, field
+
+@dataclass
+class WidgetSpec:
+    key: str
+    var_type: type
+    value: object = None
+
+    label: str = ""
+    widget: type = None
+    widget_kwargs: dict = field(default_factory=dict)
+
+    setter: callable = None
+    setter_type: str = None
+    setter_kwargs: dict = field(default_factory=dict)
+
 class ObjectVar(Variable):
     _default = None
 
@@ -195,12 +211,15 @@ def build_grid(frame, grid, row: int = 0, col: int = 0, figure: object = None, b
     widgets = {}
 
     for i, item in enumerate(grid):
-        var, obj, setter = item
-        
+        var, obj, setter = item if len(item) == 3 else (item[0], item[1], None)
+
         key, type_var, init_value = var if len(var) == 3 else (var[0], var[1], None)
         obj_label, obj_widget, obj_extra = obj if len(obj) == 3 else (obj[0], obj[1], {})
-        setter_func, setter_type, setter_kwargs = setter if len(setter) == 3 else (setter[0], setter[1], {})
-        
+
+        if setter is not None: setter_func, setter_type, setter_kwargs = setter if len(setter) == 3 \
+                                else setter[0], setter[1], {}
+        else: setter_func = None
+
         set_value = TYPE_MAP[type_var](frame, value=init_value)
         if setter_func: callback = partial(update, setter_func, mode = setter_type, figure=figure, **setter_kwargs)
         else: callback = None

@@ -37,7 +37,7 @@ class ProfileData:
         self.line = transformed
 
 @dataclass
-class ProfileView:
+class ProfilePlot:
     profiles: dict[int, ProfileData]
     ax: object
     geometry: object

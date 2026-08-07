@@ -2,12 +2,11 @@ from dataclasses import dataclass, field
 from typing import Dict, Tuple
 from tkinter.ttk import Notebook, Frame
 
-from classes.spectrum import SpectrumView
 from window.labels import create_tab
 from process.converter import coords_to_pixel
 from classes.channel import ChannelData
-from classes.map import MapView
-from classes.object import ObjectData
+from classes.views import MapView, SpecView
+from classes.objects import ObjectData
 
 @dataclass 
 class FileData: # Crea pestanyes per a cada fitxer o mapa o canal.
@@ -41,11 +40,12 @@ class FileView:
 
         self.content.columnconfigure(0, weight=1)
 
-        self.map = MapView(self)
+        self.map = MapView(self, column = 0)
 
         if any(ch.spectra is not None for ch in self.controller.channel.values()):
             self.content.columnconfigure(1, weight=1)
-            self.spectrum = SpectrumView(self)
+            self.map.figure.subplots_adjust(right=0.85)
+            self.spectrum = SpecView(self, column = 1)
 
         self.selector.bind("<<NotebookTabChanged>>", self._on_channel_changed)
 

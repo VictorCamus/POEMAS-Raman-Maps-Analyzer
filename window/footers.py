@@ -2,16 +2,20 @@ from tkinter.ttk import Frame
 from .labels import build_grid
 from process.converter import coords_to_pixel
 
-class GestorFooterAFM:
+class FooterMap:
     def __init__(self, map_view):
         self.map = map_view
-        self.view = CrearFooterAFM(parent=self.map.model.content, controller=self)
+        self.view = ViewFooterMap(parent=self.map.model.content, controller=self)
 
         self.map.canvas.mpl_connect('motion_notify_event', self.track_mouse)
 
     @property
     def channel(self):
         return self.map.channel
+
+    @property
+    def frame(self):
+        return self.view.frame
 
     def track_mouse(self, event):
         if event.inaxes == self.map.axis:
@@ -24,7 +28,7 @@ class GestorFooterAFM:
         else:
             for key in ['track_x', 'track_y', 'track_z']: self.view.widgets[key].value.set('')
 
-class CrearFooterAFM:
+class ViewFooterMap:
     def __init__(self, parent, controller):
         self.controller = controller
 
@@ -42,28 +46,29 @@ class CrearFooterAFM:
 
             return [
                 (("track_x", str, None),
-                 ("X:", 'entry', {"state": 'readonly'}),
-                 (None, "args")),
+                 ("X:", 'entry', {"state": 'readonly'})),
                 (("track_y", str, None),
-                 ("Y:", 'entry', {"state": 'readonly'}),
-                 (None, "args")),
+                 ("Y:", 'entry', {"state": 'readonly'})),
                 (("track_z", str, None),
-                 (f"{self.channel.name} ({self.channel.units}):", 'entry', {"state": 'readonly'}),
-                 (None, "args")),
+                 (f"{self.channel.name} ({self.channel.units}):", 'entry', {"state": 'readonly'}))
             ]
 
         self.widgets = build_grid(self.frame, _grid_track(), row=0, col=1, button=False, vertical = False)
 
-class GestorFooterSpectrum:
+class FooterSpec:
     def __init__(self, spec_view):
         self.spec = spec_view
-        self.view = CrearFooterSpectrum(parent=self.spec.model.content, controller=self)
+        self.view = ViewFooterSpec(parent=self.spec.model.content, controller=self)
 
         self.spec.canvas.mpl_connect('motion_notify_event', self.track_mouse)
 
     @property
     def channel(self):
         return self.spec.channel
+
+    @property
+    def frame(self):
+        return self.view.frame
 
     def track_mouse(self, event):
         if event.inaxes == self.spec.axis:
@@ -73,7 +78,7 @@ class GestorFooterSpectrum:
         else:
             for key in ['track_x', 'track_y']: self.view.widgets[key].value.set('')
 
-class CrearFooterSpectrum:
+class ViewFooterSpec:
     def __init__(self, parent, controller):
         self.controller = controller
 
@@ -91,11 +96,9 @@ class CrearFooterSpectrum:
 
             return [
                 (("track_x", str, None),
-                 (f"λ (nm):", 'entry', {"state": 'readonly'}),
-                 (None, "args")),
+                 (f"λ (nm):", 'entry', {"state": 'readonly'})),
                 (("track_y", str, None),
-                 ("Intensity (cts):", 'entry', {"state": 'readonly'}),
-                 (None, "args"))
+                 ("Intensity (cts):", 'entry', {"state": 'readonly'}))
             ]
 
         self.widgets = build_grid(self.frame, _grid_track(), row=0, col=1, button=False, vertical = False)
