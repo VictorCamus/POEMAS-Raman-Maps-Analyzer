@@ -25,6 +25,10 @@ class BaseWindow:
         window.title(title)
         window.resizable(False, False)
 
+        window.transient(gestor.root)
+        window.lift()
+        window.focus_force()
+
         self.main_frame = Frame(window)
         self.main_frame.pack(padx=10, pady=10)
 
