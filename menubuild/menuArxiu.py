@@ -11,8 +11,8 @@ from .base import BaseMenu
 class GestorArxiu(BaseMenu):  # Classe que gestiona les accions del menú "Arxiu" de l'aplicació.
     ordre = 0 # Atribut per a ordenar els menús (opcional)
     
-    def __init__(self, app, get_current, set_current):
-        super().__init__(app, get_current, set_current)  # Inicialitza la classe base
+    def __init__(self, app):
+        super().__init__(app)  # Inicialitza la classe base
         
     def registrar_menu(self, menu): # Registra les accions del menú "Arxiu" a l'aplicació.
         accions = [
@@ -76,7 +76,7 @@ class GestorArxiu(BaseMenu):  # Classe que gestiona les accions del menú "Arxiu
         file.view = FileView(self.notebook, file)
         self.files[name] = file
 
-        if self.current_file is None: self.current_file = file
+        if self.current_file is None: self.set_file(file)
 
     def _save(self, file, fig, ax, amb_histograma=True):  # Guarda les dades de totes les pestanyes obertes en fitxers.
         if not self.condicions_guardar(file): return False
@@ -132,4 +132,4 @@ class GestorArxiu(BaseMenu):  # Classe que gestiona les accions del menú "Arxiu
 
         if not self.files:
             self.label_inici.place(relx=0.5, rely=0.5, anchor='center')
-            self.current_file = None
+            self.set_file(None)

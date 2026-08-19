@@ -16,6 +16,9 @@ def to_python(value): # Funció per a poder llegir booleans i passar-los a forma
     return value.item() if isinstance(value, np.generic) else value
 
 def read_object(group, fileclass):
+    if isinstance(group, h5py.Dataset):
+        return group[()]
+
     data = {key: to_python(value) for key, value in group.attrs.items()} # Primer llig tots els atributs.
     for name, obj in group.items():
         if isinstance(obj, h5py.Dataset): data[name] = obj[:]

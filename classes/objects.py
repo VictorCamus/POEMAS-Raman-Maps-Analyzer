@@ -8,7 +8,7 @@ from process.converter import pixel_to_coords
 @dataclass
 class ObjectData:
     profiles: Dict[int, ProfileData] = field(default_factory=dict)
-    mask: object = None
+    mask: np.ndarray = None
 
 @dataclass
 class ProfileData:

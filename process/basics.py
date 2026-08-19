@@ -23,14 +23,35 @@ def truncar_significatives(x, n, cap_a='amunt'):
 
     valor = float(signe * truncat)
 
-    return int(valor) if valor.is_integer() else valor
+    return valor
 
 def find_nearest(array, values):
     array = np.asarray(array)
     values = np.atleast_1d(values)
     idx = [(np.abs(array - value)).argmin() for value in values]
 
-    return idx if len(idx) > 1 else idx[0]
+    return (idx) if len(idx) > 1 else idx[0]
+
+def set_lims(name, z):
+    if name == 'Grain': return np.array([0, 1]), z
+
+    vmin, vmax = np.nanpercentile(z, [0.2, 99.8])
+
+    if name == 'Height':
+        z -= vmin
+        vmax -= vmin
+        vmin = 0
+
+    # 4. Truncament de valors
+    vmin = truncar_significatives(vmin, 2, cap_a='avall')
+    vmax = truncar_significatives(vmax, 2, cap_a='amunt')
+
+    # 5. Correcció per evitar límits idèntics
+    if vmin == vmax:
+        vmin -= 5
+        vmax += 5
+
+    return np.array([vmin, vmax]), z
 
 def get_line(p1, p2):
     x1, y1 = p1

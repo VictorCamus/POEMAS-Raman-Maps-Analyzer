@@ -18,10 +18,7 @@ class BuildMenu:
         for cls in sorted(REGISTRE_GESTORS, key=lambda c: getattr(c, "ordre", 100)):
             nom = cls.__name__.replace("Gestor", "").lower()
 
-            gestor = cls(app,     
-                get_current=lambda: app.current_file,
-                set_current=lambda value: setattr(app, "current_file", value)
-            )
+            gestor = cls(app)
 
             setattr(self, nom, gestor)
             gestor.registrar_menu(app.menu)

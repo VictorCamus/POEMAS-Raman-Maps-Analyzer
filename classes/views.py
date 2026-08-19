@@ -1,5 +1,6 @@
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from abc import ABC, abstractmethod
+import numpy as np
 
 from classes.objects import ProfilePlot
 from classes.interactions import MapInteraction
@@ -18,6 +19,7 @@ class FigureView(ABC):
         self._create_header()
         self._create_canvas()
         self._create_footer()
+        self._create_objects()
 
         self._layout(column = column)
         self._connect()
@@ -52,6 +54,9 @@ class FigureView(ABC):
     def _create_footer(self):
         ...
 
+    def _create_objects(self):
+        pass
+
     def _layout(self, column):
         self.header.frame.grid(row=0, column=column)
         self.header.frame.grid_configure(pady=5)
@@ -72,13 +77,15 @@ class MapView(FigureView):
                                                                        self.channel.lims, self.channel.units, self.geometry.midaBase)
 
         self.escala = mapdraw.Escala(self.axis)
-        self.profiles = ProfilePlot(self.objects.profiles, self.axis, self.geometry)
 
     def _create_header(self):
         self.header = HeaderMap(self)
 
     def _create_footer(self):
         self.footer = FooterMap(self)
+
+    def _create_objects(self):
+        self.profiles = ProfilePlot(self.objects.profiles, self.axis, self.geometry)
 
     def _connect(self):
         self.zoom = MapInteraction(self)
@@ -106,6 +113,10 @@ class MapView(FigureView):
 
 class SpecView(FigureView):
 
+    @property
+    def units(self):
+        return self.header.view.widgets['units'].get()
+
     def _create_plot(self):
         self.figure, self.axis = base_plot(xtitle = 'λ (nm)', ytitle = 'Intensity (cts)')
         self.figure.subplots_adjust(left=0.2, right=0.95, bottom=0.2, top=0.8)
@@ -116,24 +127,69 @@ class SpecView(FigureView):
     def _create_footer(self):
         self.footer = FooterSpec(self)
 
+    def _create_objects(self):
+        ch = self.channel
+        view = self.header.view
+
+        units = view.widgets['units'].get()
+        xdata = ch.xdata[units]
+        ydata = np.full(xdata.shape, np.nan)
+
+        self.line, = self.axis.plot(xdata, ydata, color="b")
+        self.bkgline, = self.axis.plot(xdata, ydata, color="tab:blue")
+        self.fitline = {}
+        self.axis.set_xlim(view.widgets["left"].get(), view.widgets["right"].get())
+        self.axis.set_ylim(bottom=0)
+
     def _connect(self):
         self.canvas.mpl_connect("key_press_event", lambda e: zoom.copy_figure(self.figure) if e.key == "ctrl+c" else None)
 
     def plot_pixel(self, px, py):
+        self.coords = py, px
+        self.axis.set_title(f"X={px + 1} Y={py + 1}", fontsize=16, pad=10)
+
+        self.plot_data()
+
+    def plot_data(self):
         ch = self.channel
-        spec = ch.spectra[py, px]
+        spec = ch.spectra[*self.coords]
+        bkg = ch.spec_bkg[*self.coords]
         view = self.header.view
 
-        if not hasattr(self, 'line'):
-            self.line, = self.axis.plot(ch.xdata["nm"], spec, color="b")
-            view.widgets_ylim["bottom"].value.set(0)
-            self.axis.set_xlim(view.widgets_xlim["left"].value.get(), view.widgets_xlim["right"].value.get())
-            self.axis.set_ylim(bottom = 0)
-        else:
-            self.line.set_ydata(spec)
-            top = int(1.1*nanmax(spec))
-            self.axis.set_ylim(top = top)
-            view.widgets_ylim["top"].value.set(top)
+        units = view.widgets['units'].get()
+        xdata = ch.xdata[units]
 
-        self.axis.set_title(f"X={px + 1} Y={py+1}", fontsize = 16, pad = 10)
+        if view.widgets["bkg"].get(): ydata = spec
+        else:
+            ydata = spec - bkg
+            ydata[ydata < 0] = 0
+
+        self.line.set_ydata(ydata)
+        self.bkgline.set_ydata(bkg)
+
+        ytotal = 0
+        for fit in self.channel.fits.values():
+            for name, peak in fit.peaks.items():
+                ydata = peak.func(xdata, *(param[self.coords] for param in peak.params.values()))
+                ytotal += ydata
+                self.update_peak(name, xdata, ydata)
+
+            if self.header.view.widgets["bkg"].get(): ytotal += bkg
+            self.fitline['All'].set_ydata(ytotal)
+
+        top = int(1.1*nanmax(spec))
+        self.axis.set_ylim(top = top)
+        view.widgets["top"].set(top)
+
+        self.canvas.draw_idle()
+
+    def update_peak(self, name, xdata, ydata):
+        if self.header.view.widgets['bkg'].get():
+            bkg = self.channel.spec_bkg[*self.coords]
+            ydata = ydata + bkg
+        else:
+            bkg = np.zeros_like(ydata)
+
+        verts = np.column_stack([np.r_[xdata, xdata[::-1]], np.r_[ydata, bkg[::-1]]])
+        self.fitline[name].set_verts([verts])
         self.canvas.draw_idle()

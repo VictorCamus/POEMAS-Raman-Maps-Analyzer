@@ -10,7 +10,6 @@ import tkinter.ttk as ttk
 
 from classes.peaks import Pic, Fons
 from drawing import mapdraw as mapa
-from classes.views import MapInteraction
 from fileio.adapters import open_file
 from drawing.colormap import cmaps_matplotlib
 from drawing.plots import plot_peak

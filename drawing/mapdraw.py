@@ -17,11 +17,12 @@ def create_map(*args, **kwargs):
     
     return figure, axis, image, cbar
 
-def update_map(image, cmap, Z, lims, units, mida = None, colLims = ('w', 'k'), cbar = None):
+def update_map(image, cmap, Z, lims, units,
+               mida = None, colLims = ('w', 'k'), cbar = None, mask = None):
     vmin, vmax = lims
     
     if cmap == 'GRAIN': Z = (Z > 0).astype(int)  # Matriu binària: 1 si és un gra, 0 si no
-        
+
     image.set_data(Z)
     image.set_cmap(cmap)
     image.set_clim(vmin, vmax)

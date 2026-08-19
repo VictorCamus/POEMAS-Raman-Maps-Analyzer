@@ -1,8 +1,9 @@
 from dataclasses import dataclass, field
 from typing import Dict, Tuple
 from tkinter.ttk import Notebook, Frame
+from numpy import ones
 
-from window.labels import create_tab
+from window.widgets import create_tab
 from process.converter import coords_to_pixel
 from classes.channel import ChannelData
 from classes.views import MapView, SpecView
@@ -17,6 +18,9 @@ class FileData: # Crea pestanyes per a cada fitxer o mapa o canal.
 
     def __post_init__(self):
         self.current_channel = next(iter(self.channel.values()))
+
+        if self.objects.mask is None:
+            self.objects.mask = ones(self.geometry.N[::-1], dtype=bool)
 
 class FileView:
     def __init__(self, notebook, controller):
@@ -60,6 +64,9 @@ class FileView:
     @property
     def objects(self):
         return self.controller.objects
+
+    def resize(self):
+        return self.map.zoom.resize()
 
     def _on_channel_changed(self, event):
         notebook = event.widget

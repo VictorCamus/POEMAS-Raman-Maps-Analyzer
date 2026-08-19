@@ -1,4 +1,28 @@
 import numpy as np
+from math import floor, ceil
+from scipy.signal import find_peaks, peak_widths
+from scipy.interpolate import CubicSpline
+
+def spike_removal(y, width_threshold=3, prominence_threshold = 1000, moving_average_window=10, width_param_rel=0.8):
+    # Detects and replaces spikes in the input spectrum signal with interpolated values.
+    # Based on the publication by N. Coca-Lopez "An intuitive approach for spike removal in Raman spectra
+    # based on peaks’ prominence and width" https://doi.org/10.1016/j.aca.2024.342312
+    canviat = False
+    peaks, _ = find_peaks(y, prominence=prominence_threshold, width=[0, width_threshold])
+    spikes = np.zeros(len(y), dtype=bool)
+    widths, _, widths_left_end, widths_right_end = peak_widths(y, peaks, rel_height=width_param_rel)
+    for width, ext_a, ext_b in zip(widths, widths_left_end, widths_right_end):
+        spikes[floor(ext_a):ceil(ext_b)] = True
+    y_out = y.copy()
+
+    for i, spike in enumerate(spikes):
+        if spike:
+            window = np.arange(max(i - moving_average_window, 0), min(i + moving_average_window + 1, len(y)))
+            window_exclude_spikes = window[spikes[window] == False]
+            spline_interp = CubicSpline(window_exclude_spikes, y[window_exclude_spikes])
+            y_out[i] = spline_interp(i)
+            canviat = True
+    return y_out, canviat
 
 def savitzky_golay(y, window_size, nveg, order, deriv=0, rate=1):
 	r"""Smooth (and optionally differentiate) data with a Savitzky-Golay filter.

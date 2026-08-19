@@ -1,0 +1,334 @@
+from tkinter import messagebox
+import numpy as np
+from pybaselines import Baseline
+
+from .base import BaseMenu
+from window import BaseWindow, BaseMapWindow
+from window.widgets import Widget
+from classes.fits import FitSpec
+
+class GestorEspectre(BaseMenu):  # Classe que gestiona les accions relacionades amb els perfils de fletxes.
+    ordre = 200
+    
+    def __init__(self, app):
+        super().__init__(app)  # Inicialitza la classe base
+
+    def registrar_menu(self, menu):
+        accions = [
+            ('Calcular fons', lambda: self._background()),
+            ('Afegir llindar', lambda: Llindar(self)),
+            ('Fer ajust', lambda: FitSpec(self)),
+            ("Canviar mapa d'ajust", lambda: FitWindow(self)),
+            ('Guardar espectre', lambda: self._guardar()),
+        ]
+        
+        self.create_menu("Espectre", menu, accions)  # Crida a la funció comuna d'afegir menú
+
+    def _background(self):
+        if not hasattr(self.current_file.view.spectrum, 'coords'):
+            messagebox.showerror("Espectre", "No hi ha cap espectre dibuixat.")
+            return
+
+        Fons(self)
+
+    def _guardar(self): # Guarda els perfils dibuixats en fitxers de perfil.
+        spec = self.current_file.view.spectrum
+
+        if not hasattr(spec, 'coords'):
+            messagebox.showerror("Espectre", "No hi ha cap espectre dibuixat.")
+            return
+
+        posy, posx = spec.coords
+        folder = self.current_file.folder
+        channel = self.current_file.current_channel
+        units = spec.header.view.widgets['units'].get()
+        ruta = folder / 'Spectra'
+        ruta.mkdir(parents=True, exist_ok=True)
+        nom = ruta / f'{folder.stem}_{posx}_{posy}'
+        np.savetxt(f'{nom}.txt',
+                   np.c_[channel.xdata[units], channel.spectra[*spec.coords], channel.spec_bkg[*spec.coords]],
+                   header = '\t'.join([f'Xdata ({units})', 'I (cts)', 'Bkg (cts)']),
+                   delimiter='\t', fmt=['%.4f', '%d', '%.2f'])
+
+        spec.figure.savefig(f'{nom}.png', bbox_inches = 'tight')
+        # pos = posy - 1, posx - 1
+        # if hasattr(self, 'fits'):
+        #     ruta = f'{self.folder}_{self.posx}_{self.posy} - FIT.txt'
+        #     fit = self.fits[self.nomfit]
+        #     bkg = self.fits[self.nomfit]['bkg']
+        #     peakdata = 0
+        #     for peak in fit.values(): peakdata += peak.data(pos)
+        #     bkgdata = bkg.data(pos)
+        #     data = np.c_[bkg.xfit, peakdata, bkgdata, peakdata - bkgdata]
+        #     with open(f'{nom} - FIT.txt', 'w', encoding='utf-8', newline='') as f:
+        #         f.write(f"#Nom: {[self.nomfit]}\n")
+        #         f.write(f"#Unitats: {[bkg.units]}\n")
+        #         f.write(f"#Pics: {[key for key in fit.keys() if key != 'bkg']}\n")
+        #         f.write(f"#Funcions: {[peak.type for key, peak in fit.items() if key != 'bkg']}\n")
+        #         f.write(f"#Centres: {[str(peak.PeakCenter[*pos]) for key, peak in fit.items() if key != 'bkg']}\n")
+        #         f.write(f"#FWHM: {[str(peak.FWHM[*pos]) for key, peak in fit.items() if key != 'bkg']}\n")
+        #         f.write(f"#Intensitats: {[str(peak.Intensity[*pos]) for key, peak in fit.items() if key != 'bkg']}\n")
+        #         f.write(f'# # # #\n')
+        #         f.write(f"#Fons: {[bkg.type]}\n")
+        #         f.write(f"#Variables: {[str(bkg.varbls[*pos])]}\n\n")
+        #         header = [self.specs[self.spec_type].xtitle, "I (uA)", "bkg", "I-bkg"]
+        #         np.savetxt(f, data, delimiter='\t', fmt='%.2f', header='\t'.join(header))
+
+class Fons(BaseWindow):
+    def __init__(self, gestor):
+        super().__init__(gestor, "Calcular fons")
+
+        self.spec = self.file.view.spectrum
+        self.ydata = self.channel.spectra[*self.spec.coords]
+        self.xmask = np.isfinite(self.ydata)
+
+        self.bkg = np.full(self.ydata.shape, np.nan)
+
+        self.baseline = Baseline(x_data=self.channel.xdata[self.spec.header.view.widgets['units'].get()][self.xmask])
+
+    def plot_bkg(self, value):
+        self.widgets["percentile"].config(state = 'disabled')
+        self.widgets["spline"].config(state='disabled')
+        self.bkg = np.full(self.ydata.shape, np.nan)
+
+        self.ydata = self.channel.spectra[*self.spec.coords]
+        match value:
+            case 'nan': pass
+            case 'percentile':
+                self.widgets["percentile"].config(state='normal')
+                bkg_value = np.nanpercentile(self.ydata, self.widgets["percentile"].get())
+                self.bkg[self.xmask] = bkg_value
+
+            case 'spline':
+                self.widgets["spline"].config(state='normal')
+                bkg_value, _ = self.baseline.mixture_model(self.ydata[self.xmask], lam = 10 ** self.widgets["spline"].get())
+                self.bkg[self.xmask] = bkg_value
+
+        self.spec.bkgline.set_ydata(self.bkg)
+        self.spec.canvas.draw_idle()
+
+    def percentile(self, value):
+        bkg_value = np.nanpercentile(self.ydata, value)
+
+        self.bkg = np.full(self.ydata.shape, np.nan)
+        self.bkg[self.xmask] = bkg_value
+
+        self.spec.bkgline.set_ydata(self.bkg)
+        self.spec.canvas.draw_idle()
+
+        return
+
+    def spline(self, value):
+        bkg_value, _ = self.baseline.mixture_model(self.ydata[self.xmask], lam = 10 ** value)
+
+        self.bkg = np.full(self.ydata.shape, np.nan)
+        self.bkg[self.xmask] = bkg_value
+
+        self.spec.bkgline.set_ydata(self.bkg)
+        self.spec.canvas.draw_idle()
+
+        return
+
+    def apply_bkg(self, value):
+        bkg_class = self.widgets["bkg"].get()
+        if bkg_class == 'nan': return
+
+        if self.widgets["map_bkg"].get() == 'one':
+            N = self.file.geometry.N
+            self.channel.spec_bkg = np.tile(self.bkg, (N[1], N[0], 1))
+        else:
+            spec = self.channel.spectra
+            for i in range(spec.shape[0]):
+                for j in range(spec.shape[1]):
+                    spectrum = spec[i, j, :]
+                    bkg = np.full(self.ydata.shape, np.nan)
+
+                    if bkg_class == 'percentile':
+                        bkg_value = np.nanpercentile(spectrum, self.widgets["percentile"].get())
+                    elif bkg_class == 'spline':
+                        bkg_value, _ = self.baseline.mixture_model(spectrum[self.xmask])
+
+                    bkg[self.xmask] = bkg_value
+                    self.channel.spec_bkg[i, j, :] = bkg
+
+    def _create_widgets(self):
+        opts = {"Cap": 'nan',
+                "Percentil": "percentile",
+                "Spline": "spline"}
+
+        opts_bkg = {'Únic': 'one', 'Un per espectre': 'different'}
+
+        self.widgets = {
+            "bkg": Widget(key="bkg", var_type=str, init='nan',
+                       text="Classe de fons:", widget="radiobutton", widget_kwargs={"options": opts},
+                       setter=self.plot_bkg),
+
+            "percentile": Widget(key="percentile", var_type=float, init=0,
+                          text="Percentil (%):", widget="scale",
+                          widget_kwargs = {'to': 100, 'resolution': 1, 'state': 'disabled'},
+                          setter=self.percentile),
+
+            "spline": Widget(key="spline", var_type=float, init=5,
+                      text="Spline:", widget="scale",
+                      widget_kwargs={"from": 3, "to": 7, "resolution": 1, "state": "disabled"},
+                      setter = self.spline),
+
+            "map_bkg": Widget(key="map_bkg", var_type=str, init='one',
+                       text="Fons del mapa:", widget="radiobutton", widget_kwargs={"options": opts_bkg}),
+
+            "apply": Widget(key="apply", var_type=str, init='Aplicar',
+                       text = "Aplicar", widget = 'button',
+                       setter = self.apply_bkg)
+            }
+
+class Llindar(BaseMapWindow):
+    def __init__(self, gestor):
+        super().__init__(gestor, "Calcular fons")
+
+    def threshold(self, value):
+        inf, sup = self.widgets['thrInf'].get(), self.widgets['thrSup'].get()
+
+        self.z = self.channel.Z.copy()
+        self.mask = (self.z >= inf) & (self.z <= sup)
+        self.z[~self.mask] = np.nan
+        self.update_fig()
+
+    def apply_threshold(self, value):
+        self.file.objects.mask = self.mask
+        self.channel.Z = self.z
+        self.file.view.map.refresh_map()
+
+    def _create_widgets(self):
+
+        self.widgets = {
+            "thrInf": Widget(key="bkg", var_type=float, init=0,
+                       text="Llindar inferior:", widget="entry",
+                       setter=self.threshold),
+
+            "thrSup": Widget(key="thrSup", var_type=float, init=int(1.1* np.nanmax(self.channel.Z)),
+                          text="Llindar superior:", widget="entry",
+                          setter=self.threshold),
+
+            "apply": Widget(key="apply", var_type=str, init='Aplicar',
+                       text = "Aplicar", widget = 'button',
+                       setter = self.apply_threshold)
+            }
+
+class FitWindow(BaseWindow):
+    def __init__(self, gestor):
+        super().__init__(gestor, "Mostrar paràmetres de l'ajust")
+
+    @property
+    def fit(self):
+        return self._fit
+
+    @fit.setter
+    def fit(self, value):
+        if value is None:
+            return
+
+        if value in self.channel.fits:
+            self._fit = self.channel.fits[value]
+            self.fit_key = value
+
+            # En canviar de fit, seleccionem el primer pic
+            self.peak_key, self._peak = next(iter(self.fit.peaks.items()))
+            self.parameter_key, self._parameter = next(
+                iter(self.peak.params.items())
+            )
+
+            self.update_peaks()
+
+    @property
+    def peak(self):
+        return self._peak
+
+    @peak.setter
+    def peak(self, value):
+        if value is None:
+            return
+
+        if value in self.fit.peaks:
+            self._peak = self.fit.peaks[value]
+            self.peak_key = value
+
+            # En canviar de pic, seleccionem el primer paràmetre
+            self.parameter_key, self._parameter = next(iter(self.peak.params.items()))
+            self.update_params()
+
+    @property
+    def parameter(self):
+        return self._parameter
+
+    @parameter.setter
+    def parameter(self, value):
+        if value is None:
+            return
+
+        if value in self.peak.params:
+            self._parameter = self.peak.params[value]
+            self.parameter_key = value
+
+        self.channel.Z = self._parameter
+        self.channel.update_lims()
+
+        map = self.file.view.map
+        map.header.view.refresh(self.channel)
+        map.refresh_map()
+
+    def update_peaks(self):
+        if self.fit is None or not self.fit.peaks or not hasattr(self, 'widgets'):
+            return
+
+        peaks = list(self.fit.peaks.keys())
+
+        combo = self.widgets["peak"]
+        combo.config(values=peaks)
+        combo.widget.options = dict(zip(peaks, peaks))
+
+        if self.peak_key in peaks:
+            combo.set(self.peak_key)
+            self.peak = self.peak_key
+        else:
+            combo.set(peaks[0])
+            self.peak = peaks[0]
+
+    def update_params(self):
+        if self.peak is None or not self.peak.params or not hasattr(self, 'widgets'):
+            return
+
+        params = list(self.peak.params.keys())
+
+        combo = self.widgets["parameter"]
+        combo.config(values=params)
+        combo.widget.options = dict(zip(params, params))
+
+        if self.parameter_key in params:
+            combo.set(self.parameter_key)
+            self.parameter = self.parameter_key
+        else:
+            combo.set(params[0])
+            self.parameter = params[0]
+
+    def _create_widgets(self):
+        opts_fits = list(self.channel.fits.keys())
+        self.fit = opts_fits[0]
+
+        opts_peaks = list(self.fit.peaks.keys())
+        self.peak = opts_peaks[0]
+
+        opts_pars = list(self.peak.params.keys())
+        self.parameter = opts_pars[0]
+
+        self.widgets = {
+            'fit': Widget(key = 'fit', var_type = str, init = self.fit,
+                    text = 'Ajusts:', widget = 'cb', widget_kwargs = {'options': opts_fits},
+                    setter = self, mode = 'attr'),
+
+            'peak': Widget(key='peak', var_type=str, init=self.peak,
+                    text='Pic:', widget='cb', widget_kwargs = {'options': opts_peaks},
+                    setter=self, mode = 'attr'),
+
+            'parameter': Widget(key='parameter', var_type=str, init=self.parameter,
+                   text='Paràmetre:', widget='cb', widget_kwargs = {'options': opts_pars},
+                   setter=self, mode = 'attr')}

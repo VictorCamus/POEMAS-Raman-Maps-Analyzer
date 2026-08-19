@@ -43,22 +43,18 @@ class BaseMenu(Condicions):  # Classe base per a gestionar les accions comunes d
         super().__init_subclass__(**kwargs)
         REGISTRE_GESTORS.append(cls)
         
-    def __init__(self, app, get_current, set_current):
+    def __init__(self, app):
         self.files = app.files
         self.root = app.root
         self.notebook = app.notebook
         self.label_inici = app.label_inici
 
-        self._get_current = get_current
-        self._set_current = set_current
+        self.get_file = app.get_file
+        self.set_file = app.set_file
 
     @property
     def current_file(self):
-        return self._get_current()
-
-    @current_file.setter
-    def current_file(self, value):
-        self._set_current(value)
+        return self.get_file()
 
     def element_obert(self):
         file = self.current_file

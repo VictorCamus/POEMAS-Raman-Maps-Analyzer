@@ -4,12 +4,13 @@ import numpy as np
 from .base import BaseMenu
 from tkinter import messagebox
 from window.builder import BaseWindow
+from window.widgets import Widget
 
 class GestorImatges(BaseMenu): # Classe que gestiona les accions relacionades amb el zoom de les imatges.
     ordre = 10 # Atribut per a ordenar els menús (opcional)
     
-    def __init__(self, app, get_current, set_current):
-        super().__init__(app, get_current, set_current)
+    def __init__(self, app):
+        super().__init__(app)
         
     def registrar_menu(self, menu):
         accions = [
@@ -20,7 +21,7 @@ class GestorImatges(BaseMenu): # Classe que gestiona les accions relacionades am
             ("Zoom manual", lambda: self._zoom_manual(), None),
             ("Sincronitzar zoom", lambda: self._zoom_sync(), None),
             ("SEPARATOR"),
-            ("Desfer zoom", lambda: self._base_zoom(), None)
+            ("Desfer zoom", lambda: self._desfer_zoom(), None)
         ]
         
         self.create_menu("Operacions bàsiques", menu, accions)
@@ -39,10 +40,15 @@ class GestorImatges(BaseMenu): # Classe que gestiona les accions relacionades am
         for ch in file.channel.values():
             if rot != 0:
                 ch.Z = np.rot90(ch.Z, k=rot)
-                if ch.spectra is not None: ch.spectra = np.rot90(ch.spectra, k=rot)
+                if ch.spectra is not None:
+                    ch.spectra = np.rot90(ch.spectra, k=rot)
+                    ch.spec_bkg = np.rot90(ch.spec_bkg, k=rot)
+
             if flip:
                 ch.Z = np.flip(ch.Z, axis = 1)
-                if ch.spectra is not None: ch.spectra = np.flip(ch.spectra, axis = 1)
+                if ch.spectra is not None:
+                    ch.spectra = np.flip(ch.spectra, axis = 1)
+                    ch.spec_bkg = np.flip(ch.spec_bkg, axis=1)
 
         file.view.map.image.set_data(channel.Z)
         self._update_rotation(file, rot, flip)
@@ -55,10 +61,10 @@ class GestorImatges(BaseMenu): # Classe que gestiona les accions relacionades am
             g.N = g.N[::-1]
 
         mask = file.objects.mask
-        if mask:
-            if rot: mask = np.rot90(mask, k=rot)
-            if flip: mask = np.flip(mask, axis = 1)
-            mask.set_data(mask)
+        if rot: mask = np.rot90(mask, k=rot)
+        if flip: mask = np.flip(mask, axis=1)
+
+        file.objects.mask = mask
 
         g.rotate(rot, flip)
         map.refresh_geometry()
@@ -67,7 +73,7 @@ class GestorImatges(BaseMenu): # Classe que gestiona les accions relacionades am
         for prof in file.objects.profiles.values(): prof.rotate(g.N, rot, flip)
         map.profiles.update()
 
-        if file.geometry.mida[0] != file.geometry.mida[1]: map.zoom.resize()
+        if file.geometry.mida[0] != file.geometry.mida[1]: file.view.resize()
 
     def _rot_sync(self):
         if not self.comprova_fitxer(): return
@@ -75,8 +81,9 @@ class GestorImatges(BaseMenu): # Classe que gestiona les accions relacionades am
 
         for f in self.files.values():
             if f is not file:
-                flip = xor(file.flip, f.flip)
-                rot = (file.rot - f.rot) % 4 if not f.flip else - (file.rot - f.rot) % 4
+                flip = xor(file.geometry.flip, f.geometry.flip)
+                rotation = (file.geometry.rotation - f.geometry.rotation) % 4
+                rot = rotation if not f.geometry.flip else -rotation
                 self._rotate(rot = rot, flip = flip, file=f)
 
     def _zoom_manual(self):
@@ -127,16 +134,25 @@ class ZoomManual(BaseWindow):
 
         self.geometry.xylims = xlims, ylims
         self.map.refresh_geometry()
-        self.map.zoom.resize()
+        self.file.view.resize()
 
-    def _grid(self):
-        return [
-            # Estructura: ((var_name, var_type), (label, object), setter, {getter, **extra})
-            (("left", float, self.geometry.xlims[0]), ("Left (Eix X):", 'entry'), (self.set_lims, "kwargs")),
-            (("right", float, self.geometry.xlims[1]), ("Right (Eix X):", 'entry'), (self.set_lims, "kwargs")),
-            (("bottom", float, self.geometry.ylims[0]), ("Bottom (Eix Y):", 'entry'), (self.set_lims, "kwargs")),
-            (("top", float, self.geometry.ylims[1]), ("Top (Eix Y):", 'entry'), (self.set_lims, "kwargs")),
-        ]
+    def _create_widgets(self):
+        self.widgets = {
+                "left": Widget(key="left", var_type=float, init=self.geometry.xlims[0],
+                        text="Left (Eix X):", widget="entry",
+                        setter=self.set_lims, mode="kwargs"),
+
+                "right": Widget(key="right", var_type=float, init=self.geometry.xlims[1],
+                                text="Right (Eix X):", widget="entry",
+                                setter=self.set_lims, mode="kwargs"),
+
+                "bottom": Widget(key="bottom", var_type=float, init=self.geometry.ylims[0],
+                                 text="Bottom (Eix Y):", widget="entry",
+                                 setter=self.set_lims, mode="kwargs"),
+
+                "top": Widget(key="top", var_type=float, init=self.geometry.ylims[1],
+                              text="Top (Eix Y):", widget="entry",
+                              setter=self.set_lims, mode="kwargs")}
 
     @staticmethod
     def validar(lim_inf, lim_sup, mida, widgets_inf, widgets_sup):

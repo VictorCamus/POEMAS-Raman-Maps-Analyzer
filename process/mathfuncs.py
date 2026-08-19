@@ -20,17 +20,27 @@ def EMG(x, x0, FWHM, A, tau):
 
     return A * exponnorm.pdf(x, K=K, loc=x0, scale=sigma)
 
-def constant(x: float, y0: float):
-    return np.full_like(x, y0)
+def constant(x: float, C: float):
+    return np.full_like(x, C)
 
-Functions = {'G': gaussian, 'L': lorentz, 'V': voigt, 'EMG': EMG, 'C': constant}
+Functions = {'Gaussiana': gaussian, 'Lorentziana': lorentz, 'Voigt': voigt, 'EMG': EMG, 'C': constant}
 
 FuncParams = {
-    'G': ('x0', 'FWHM', 'A'),
-    'L': ('x0', 'FWHM', 'A'),
-    'V': ('x0', 'sigma', 'gamma', 'A'),
+    'Gaussiana': ('x0', 'FWHM', 'A'),
+    'Lorentziana': ('x0', 'FWHM', 'A'),
+    'Voigt': ('x0', 'sigma', 'gamma', 'A'),
     'EMG': ('x0', 'FWHM', 'A', 'tau'),
     'C': ('C',)
+}
+
+DEFAULT_PARAMS = {
+    'x0':   {'value': 0.0, 'min': -np.inf, 'max': np.inf},
+    'FWHM': {'value': 5.0, 'min': 0.0,  'max': np.inf},
+    'sigma':{'value': 5.0, 'min': 0.0,  'max': np.inf},
+    'gamma':{'value': 1.0, 'min': 0.0,  'max': np.inf},
+    'A':   {'value': 100.0, 'min': 0.0,  'max': np.inf},
+    'tau': {'value': 1.0, 'min': 0.0,  'max': np.inf},
+    'C':   {'value': 0.0, 'min': -np.inf,  'max': np.inf},
 }
 
 def linear_combination(names, funcs):

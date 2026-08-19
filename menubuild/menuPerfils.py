@@ -9,14 +9,15 @@ from drawing.arrows import FletxaInteractiva
 from drawing.plots import base_plot
 from .base import BaseMenu
 from window import BaseFigureWindow
+from window.widgets import Widget
 from classes.objects import ProfileData
 from process.basics import get_line
 
 class GestorPerfils(BaseMenu):  # Classe que gestiona les accions relacionades amb els perfils de fletxes.
     ordre = 30
     
-    def __init__(self, app, get_current, set_current):
-        super().__init__(app, get_current, set_current)  # Inicialitza la classe base
+    def __init__(self, app):
+        super().__init__(app)  # Inicialitza la classe base
 
         self.color = ['r','b','g','orange','y','cyan','pink','k']
 
@@ -158,14 +159,14 @@ class MostrarPerfils(BaseFigureWindow):
         self.color = ['r', 'b', 'g', 'orange', 'y', 'cyan', 'pink', 'k']
         self.num = 0
 
-        self.ax.set_xlabel(r'Length ($\mu$m)')
-        self.ax.set_xlim(0, self.profiles[0].length)
-        self.ax.set_ylabel(self.channel.ax_title)
+        self.axis.set_xlabel(r'Length ($\mu$m)')
+        self.axis.set_xlim(0, self.profiles[0].length)
+        self.axis.set_ylabel(self.channel.ax_title)
         
         self.line = {}
-        _, _, self.line[0] = self.file.view.map.profiles.plot(0, self.ax, self.channel.Z)
+        _, _, self.line[0] = self.file.view.map.profiles.plot(0, self.axis, self.channel.Z)
         
-        self.lims = self.ax.get_ylim()
+        self.lims = self.axis.get_ylim()
         self.widgets['inf'].value.set(round(self.lims[0], 0))
         self.widgets['sup'].value.set(round(self.lims[1], 0))
 
@@ -203,11 +204,11 @@ class MostrarPerfils(BaseFigureWindow):
     
     def plot_channel(self, value):
         self.channel = value
-        self.ax.set_ylabel(self.channel.ax_title)
+        self.axis.set_ylabel(self.channel.ax_title)
         self.toggle_plot()
 
     def set_widgets(self):
-        self.lims = self.ax.get_ylim()
+        self.lims = self.axis.get_ylim()
         if hasattr(self, "widgets"):
             self.widgets['inf'].value.set(round(self.lims[0], 3))
             self.widgets['sup'].value.set(round(self.lims[1], 3))
@@ -218,7 +219,7 @@ class MostrarPerfils(BaseFigureWindow):
         if inf is not None: self.lims = (inf, self.lims[1])
         if sup is not None: self.lims = (self.lims[0], sup)
 
-        self.ax.set_ylim(self.lims)
+        self.axis.set_ylim(self.lims)
         
         self.figure.tight_layout()
         self.figure.canvas.draw_idle()
@@ -236,9 +237,7 @@ class MostrarPerfils(BaseFigureWindow):
             ymax = -np.inf
 
             for num in self.profiles:
-                x, y, self.line[num] = self.file.view.map.profiles.plot(
-                    num, self.ax, self.channel.Z
-                )
+                x, y, self.line[num] = self.file.view.map.profiles.plot(num, self.axis, self.channel.Z)
 
                 xmax = max(xmax, x[-1])
                 ymin = min(ymin, np.min(y))
@@ -246,11 +245,11 @@ class MostrarPerfils(BaseFigureWindow):
 
             diff = (ymax - ymin) / 15 if ymax > ymin else 1
 
-            self.ax.set_xlim(0, xmax)
+            self.axis.set_xlim(0, xmax)
             self.lims = (ymin - diff, ymax + diff)
-            self.ax.set_ylim(self.lims)
+            self.axis.set_ylim(self.lims)
 
-        else: _, _, self.line[self.num] = self.file.view.map.profiles.plot(self.num, self.ax, self.channel.Z)
+        else: _, _, self.line[self.num] = self.file.view.map.profiles.plot(self.num, self.axis, self.channel.Z)
 
         self.figure.tight_layout()
         self.figure.tight_layout()
@@ -278,17 +277,33 @@ class MostrarPerfils(BaseFigureWindow):
 
             np.savetxt(txt_ruta, np.column_stack((x, y)), fmt="%.3f")
     
-    def _grid(self):
+    def _create_widgets(self):
         files = list(key for key, f in self.files.items() if self.profiles is not None)
         if not self.profiles: self.file = files[0]
 
         channels = list(self.file.channel.keys())
 
-        return [
-            (("file", str, self.file.name), ("Arxiu:", 'cb', {"options": files}), (self.plot_file, "args")),
-            (("channel", str, self.channel.name), ("Canal:", 'cb', {"options": channels}), (self.plot_channel, "args")),
-            (("profile", str, '1'), ("Perfil:", 'entry', {"state": "readonly"}), (self, "attr")),
-            (("inf", float, 0), ("Límit inferior:", 'entry'), (self.plot_lims, "kwargs")),
-            (("sup", float, 1), ("Límit superior:", 'entry'), (self.plot_lims, "kwargs")),
-            (("save", str, "Guardar"), ("Guardar dades i imatge:", 'button'), (self.guardar, "args"))
-            ]
+        self.widgets = {
+            "file": Widget(key="file", var_type=str, init=self.file.name,
+                    text="Arxiu:", widget="cb", widget_kwargs={"options": files},
+                    setter=self.plot_file),
+
+            "channel": Widget(key="channel", var_type=str, init=self.channel.name,
+                       text="Canal:", widget="cb", widget_kwargs={"options": channels},
+                       setter=self.plot_channel),
+
+            "profile": Widget(key="profile", var_type=str, init="1",
+                       text="Perfil:", widget="entry", widget_kwargs={"state": "readonly"},
+                       setter=self, mode="attr"),
+
+            "inf": Widget(key="inf", var_type=float, init=0,
+                   text="Límit inferior:", widget="entry",
+                   setter=self.plot_lims, mode="kwargs"),
+
+            "sup": Widget(key="sup", var_type=float, init=1,
+                   text="Límit superior:", widget="entry",
+                   setter=self.plot_lims, mode="kwargs"),
+
+            "save": Widget(key="save", var_type=str, init="Guardar",
+                    text="Guardar dades i imatge:", widget="button",
+                    setter=self.guardar)}

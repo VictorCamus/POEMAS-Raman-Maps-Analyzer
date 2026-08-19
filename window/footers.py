@@ -1,5 +1,5 @@
 from tkinter.ttk import Frame
-from .labels import build_grid
+from .widgets import Widget
 from process.converter import coords_to_pixel
 
 class FooterMap:
@@ -21,12 +21,12 @@ class FooterMap:
         if event.inaxes == self.map.axis:
             x_pixel, y_pixel = coords_to_pixel([(event.xdata, event.ydata)], self.map.geometry.N, self.map.geometry.midaBase)[0]
 
-            self.view.widgets['track_x'].value.set(x_pixel+1)
-            self.view.widgets['track_y'].value.set(y_pixel+1)
-            self.view.widgets['track_z'].value.set(float(f"{self.channel.Z[y_pixel, x_pixel]:.2f}"))
+            self.view.widgets['track_x'].set(x_pixel+1)
+            self.view.widgets['track_y'].set(y_pixel+1)
+            self.view.widgets['track_z'].set(float(f"{self.channel.Z[y_pixel, x_pixel]:.2f}"))
 
         else:
-            for key in ['track_x', 'track_y', 'track_z']: self.view.widgets[key].value.set('')
+            for key in ['track_x', 'track_y', 'track_z']: self.view.widgets[key].set('')
 
 class ViewFooterMap:
     def __init__(self, parent, controller):
@@ -35,25 +35,22 @@ class ViewFooterMap:
         self.frame = Frame(parent)
         self.frame.columnconfigure(0, weight=1)
 
-        self._trackers()
+        self._create_widgets()
 
     @property
     def channel(self):
         return self.controller.channel
 
-    def _trackers(self): # Afegeix controls per canviar el color del mapa i de l'escala.
-        def _grid_track():
+    def _create_widgets(self): # Afegeix controls per canviar el color del mapa i de l'escala.
+        self.widgets = {
+            'track_x': Widget(key='track_x', var_type=str,
+                       text="X:", widget='entry', widget_kwargs={"state": 'readonly'}),
+            'track_y': Widget(key='track_y', var_type=str,
+                       text="Y:", widget='entry', widget_kwargs={"state": 'readonly'}),
+            'track_z': Widget(key='track_z', var_type=str, text=f"{self.channel.name} ({self.channel.units}):",
+                       widget='entry', widget_kwargs={"state": 'readonly'})}
 
-            return [
-                (("track_x", str, None),
-                 ("X:", 'entry', {"state": 'readonly'})),
-                (("track_y", str, None),
-                 ("Y:", 'entry', {"state": 'readonly'})),
-                (("track_z", str, None),
-                 (f"{self.channel.name} ({self.channel.units}):", 'entry', {"state": 'readonly'}))
-            ]
-
-        self.widgets = build_grid(self.frame, _grid_track(), row=0, col=1, button=False, vertical = False)
+        for i, widget in enumerate(self.widgets.values()): widget.add(self.frame, row = 0, col = 2*i + 1)
 
 class FooterSpec:
     def __init__(self, spec_view):
@@ -72,11 +69,11 @@ class FooterSpec:
 
     def track_mouse(self, event):
         if event.inaxes == self.spec.axis:
-            self.view.widgets['track_x'].value.set(round(event.xdata, 2))
-            self.view.widgets['track_y'].value.set(int(event.ydata))
+            self.view.widgets['track_x'].set(round(event.xdata, 2))
+            self.view.widgets['track_y'].set(int(event.ydata))
 
         else:
-            for key in ['track_x', 'track_y']: self.view.widgets[key].value.set('')
+            for key in ['track_x', 'track_y']: self.view.widgets[key].set('')
 
 class ViewFooterSpec:
     def __init__(self, parent, controller):
@@ -85,20 +82,17 @@ class ViewFooterSpec:
         self.frame = Frame(parent)
         self.frame.columnconfigure(0, weight=1)
 
-        self._trackers()
+        self._create_widgets()
 
     @property
     def channel(self):
         return self.controller.channel
 
-    def _trackers(self): # Afegeix controls per canviar el color del mapa i de l'escala.
-        def _grid_track():
+    def _create_widgets(self): # Afegeix controls per canviar el color del mapa i de l'escala.
+        self.widgets = {
+            'track_x': Widget(key='track_x', var_type=str,
+                              text=f"λ (nm):", widget='entry', widget_kwargs={"state": 'readonly'}),
+            'track_y': Widget(key='track_y', var_type=str,
+                              text="Intensity (cts):", widget='entry', widget_kwargs={"state": 'readonly'})}
 
-            return [
-                (("track_x", str, None),
-                 (f"λ (nm):", 'entry', {"state": 'readonly'})),
-                (("track_y", str, None),
-                 ("Intensity (cts):", 'entry', {"state": 'readonly'}))
-            ]
-
-        self.widgets = build_grid(self.frame, _grid_track(), row=0, col=1, button=False, vertical = False)
+        for i, widget in enumerate(self.widgets.values()): widget.add(self.frame, row = 0, col = 2*i + 1)

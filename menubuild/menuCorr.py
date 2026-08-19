@@ -1,13 +1,16 @@
 import numpy as np
+
 from window import BaseMapWindow
 from process import flatten as flat
+from process.basics import set_lims
 from .base import BaseMenu
+from window.widgets import Widget
 
 class GestorCorreccio(BaseMenu):  # Classe que gestiona les accions relacionades amb els perfils de fletxes.
     ordre = 20 # Atribut per a ordenar els menús (opcional)
     
-    def __init__(self, app, get_current, set_current):
-        super().__init__(app, get_current, set_current)  # Inicialitza la classe base
+    def __init__(self, app):
+        super().__init__(app)  # Inicialitza la classe base
 
     def registrar_menu(self, menu):
         accions = [
@@ -23,21 +26,31 @@ class RescaleMaps(BaseMapWindow):
         self.opt = "sum"
         super().__init__(gestor, "Reescalar mapes")
 
-    def _grid(self):
+    def _create_widgets(self):
         files = list(self.files.keys())
         channels = list(self.file.channel.keys())
         opts = {"Sumar": "sum",
                 "Multiplicar": "mult",
                 "Normalitzar": "norm"}
 
-        return [
-            (("file", str, self.file.name), ("Arxiu:", 'cb', {"options": files}), (self.file_changed, "args")),  
-            (("channel", str, self.channel.name), ("Canal:", 'cb', {"options": channels}), (self.channel_changed, "args")),
-            (("opt", str, self.opt), ("Opcions:", 'radiobutton', {"options": opts}), (self, "attr")),
-            (("value", float, 0), ("Valor:", 'entry'), (self.reescale_ops, "args")),
-            (("apply", str, "Aplicar"), ("", 'button'), (self.aplicar, "args"))
-            ]
-    
+        self.widgets = {
+            "file":    Widget(key = 'file', var_type = str, init = self.file.name,
+
+                       text = "Arxiu:", widget = 'cb', widget_kwargs = {"options": files},
+                       setter = self.file_changed),
+            "channel": Widget(key = "channel", var_type = str, init = self.channel.name,
+                       text = "Canal:", widget = 'cb', widget_kwargs = {"options": channels},
+                       setter = self.channel_changed),
+            "opt":     Widget(key = "opt", var_type = str, init = self.opt,
+                       text = "Opcions:", widget = 'radiobutton', widget_kwargs = {"options": opts},
+                       setter = self, mode = 'attr'),
+            "value":   Widget(key = 'value', var_type = float, init = 0,
+                       text = "Valor:", widget = 'entry',
+                       setter = self.reescale_ops),
+            "apply":   Widget(key = "apply", var_type = str, init = "Aplicar",
+                       widget = 'button',
+                       setter = self.aplicar)}
+
     def reescale_ops(self, value):
         ch = self.file.channel[self.widgets['channel'].get()]; opt = self.opt
 
@@ -46,8 +59,8 @@ class RescaleMaps(BaseMapWindow):
             case "sum": self.z += value; self.lims = [ch.lims[0]+value, ch.lims[1]+value]
             case "mult": self.z *= value; self.lims = [ch.lims[0]*value, ch.lims[1]*value]
             case "norm":
-                zMin, zMax = self.z.min(), self.z.max()
-                self.z = (self.z-zMin)/(zMax-zMin)
+                zmin, zmax = self.z.min(), self.z.max()
+                self.z = (self.z-zmin)/(zmax-zmin)
                 self.lims = [0, 1]
         
         self.update_fig()
@@ -59,21 +72,38 @@ class LevelMaps(BaseMapWindow):
         self._level_mode = "Cap"
         self._linematch_mode = "Cap"
 
-    def _grid(self):
+    def _create_widgets(self):
         files = list(self.files.keys())
         channels = list(self.file.channel.keys())
         options_level = ["Cap", "General", "Cara dominant"]
         options_linematch = {'Cap': 'Cap', 'Mediana': 'median', 'Diferència de medianes': 'median_diff', 'Mòdul': 'modus', 'Comparació': 'match'}
-        
-        return [
-            (("file", str, self.file.name), ("Arxiu:", 'cb', {"options": files}), (self.on_file_changed, "args")),  
-            (("channel", str, self.channel.name), ("Canal:", 'cb', {"options": channels}), (self.on_channel_changed, "args")),
-            (("level", str, "Cap"), ("Aplanament:", 'radiobutton', {"options": options_level}), (self.level, "args")),
-            (("linematch", str, "Cap"), ("Corregir línies:", 'radiobutton', {'options': options_linematch}), (self.linematch, "args")),
-            (("direction", bool, True), ("Direcció:", 'radiobutton', {"options": {"H": True, "V": False}, "vertical": False}), (self.direction, "args")),
-            (("apply", str, "Aplicar"), ("", 'button'), (self.aplicar, "args"))
-            ]
-    
+
+        self.widgets = {
+            "file": Widget(key="file", var_type=str, init=self.file.name,
+                    text="Arxiu:", widget="cb", widget_kwargs={"options": files},
+                    setter=self.on_file_changed),
+
+            "channel": Widget(key="channel", var_type=str, init=self.channel.name, text="Canal:",
+                       widget="cb", widget_kwargs={"options": channels}, setter=self.on_channel_changed),
+
+            "level": Widget(key="level", var_type=str, init="Cap", text="Aplanament:",
+                     widget="radiobutton", widget_kwargs={"options": options_level},
+                     setter=self.level),
+
+            "linematch": Widget(key="linematch", var_type=str, init="Cap", text="Corregir línies:",
+                         widget="radiobutton", widget_kwargs={"options": options_linematch},
+                         setter=self.linematch),
+
+            "direction": Widget(key="direction", var_type=bool, init=True,
+                         text="Direcció:", widget="radiobutton",
+                         widget_kwargs={"options": {"H": True, "V": False}, "direction": "h"},
+                         setter=self.direction),
+
+            "apply": Widget(key="apply", var_type=str, init="Aplicar",
+                     widget="button",
+                     setter=self.aplicar),
+        }
+
     def on_file_changed(self, value):
         self.file_changed(value)
         self.apply_all()
@@ -97,28 +127,27 @@ class LevelMaps(BaseMapWindow):
     def apply_all(self):
         ch = self.file.channel[self.widgets['channel'].get()]
         z = ch.Z.copy()
-        N = np.copy(self.file.geometry.N)
+        npixels = self.file.geometry.N
         
         # --- LEVEL ---
         match self._level_mode:
-            case "General": z = flat.level_plane(z, N)
-            case "Cara dominant": z = flat.level_facet(z, N)
+            case "General": z = flat.level_plane(z, npixels)
+            case "Cara dominant": z = flat.level_facet(z, npixels)
             case "Cap": pass
 
         # --- LINEMATCH ---
-        if not self._direction: 
-            z = z.T; N = N[::-1]
+        if not self._direction: z = z.T; npixels = npixels[::-1]
 
         match self._linematch_mode:
-            case "median": z = flat.linematch_median(z, N)
-            case "median_diff": z = flat.linematch_median_diff(z, N)
-            case "modus": z = flat.linematch_modus(z, N)
-            case "match": z = flat.linematch_match(z, N)
+            case "median": z = flat.linematch_median(z, npixels)
+            case "median_diff": z = flat.linematch_median_diff(z, npixels)
+            case "modus": z = flat.linematch_modus(z, npixels)
+            case "match": z = flat.linematch_match(z, npixels)
             case "Cap": pass
 
-        if not self._direction: z = z.T; N = N[::-1]
+        if not self._direction: z = z.T
 
         # --- FINAL ---
-        self.z = z
-        ch.update_lims()
+
+        self.lims, self.z = set_lims(ch.name, z)
         self.update_fig()

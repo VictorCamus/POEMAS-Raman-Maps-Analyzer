@@ -1,15 +1,17 @@
 from tkinter import Button, filedialog, Frame
-from window import BaseFigureWindow
 from pathlib import Path
 import numpy as np
+
+from window import BaseFigureWindow
+from window.widgets import Widget
 from process.statistics import hist, boxplot, remove_boxplot
 from .base import BaseMenu
 
 class GestorEstadistica(BaseMenu):  # Classe que gestiona les accions relacionades amb els perfils de fletxes.
     ordre = 50 # Atribut per a ordenar els menús (opcional)
     
-    def __init__(self, app, get_current, set_current):
-        super().__init__(app, get_current, set_current)  # Inicialitza la classe base
+    def __init__(self, app):
+        super().__init__(app)  # Inicialitza la classe base
 
     def registrar_menu(self, menu):
         accions = [
@@ -52,8 +54,8 @@ class Histogrames(BaseFigureWindow):
         if sup is not None: self.lims = (self.lims[0], sup)
         
         match self.mode:
-            case "Hist": self.ax.set_xlim(self.lims)
-            case "Box": self.ax.set_ylim(self.lims)
+            case "Hist": self.axis.set_xlim(self.lims)
+            case "Box": self.axis.set_ylim(self.lims)
         
         self.figure.tight_layout()
         self.figure.canvas.draw_idle()
@@ -83,8 +85,8 @@ class Histogrames(BaseFigureWindow):
         color = self.widgets['cb_color'].value.get()
         
         match self.mode:
-            case "Hist": self.plot, self.hist_data, _ = hist(self.ax, self.data, self.lims, xlabel=self.channel.ax_title, color=color)
-            case "Box": self.plot = boxplot(self.ax, self.data, self.lims, name=self.channel.name, ylabel=self.channel.ax_title, color=color)
+            case "Hist": self.plot, self.hist_data, _ = hist(self.axis, self.data, self.lims, xlabel=self.channel.ax_title, color=color)
+            case "Box": self.plot = boxplot(self.axis, self.data, self.lims, name=self.channel.name, ylabel=self.channel.ax_title, color=color)
 
         self.figure.tight_layout()
         self.figure.tight_layout()
@@ -105,9 +107,15 @@ class Histogrames(BaseFigureWindow):
 
             with open(txt_ruta, "w", encoding="utf-8") as f:
                 for item in self.widgets.values():
-                    if getattr(item, "_widget_type", None) == "entry" and item.cget("state") == "readonly":
-                        f.write(f"{item._label.cget('text'):<30} {item.value.get():>10}\n")
-        
+                    if item.widget_type == "entry" and item.widget.cget("state") == "readonly":
+                        f.write(f"{item.label.cget('text'):<30} {item.value.get():>10}\n")
+
+                f.write("\n")
+                f.write(f"{'Bin':<10}{'Count':<8}\n")
+
+                for bin_, count in self.hist_data:
+                    f.write(f"{bin_:<10.2f}{count:<8.5f}\n")
+
     def set_widgets(self):
         mean, std, skew, kurt, lw, q1, q2, q3, tw = self.compute_stats()
         self.widgets['mean'].value.set(round(mean, 3))
@@ -145,28 +153,71 @@ class Histogrames(BaseFigureWindow):
 
         return mean, std, skew, kurt, lw, q1, q2, q3, tw
 
-    def _grid(self):
+    def _create_widgets(self):
         files = list(self.files.keys())
         channels = list(self.file.channel.keys())
         mean, std, skew, kurt, lw, q1, q2, q3, tw = self.compute_stats()
-        
-        return [
-            (("file", str, self.file.name), ("Arxiu:", 'cb', {"options": files}), (self.plot_file, "args")),
-            (("channel", str, self.channel.name), ("Canal:", 'cb', {"options": channels}), (self.plot_channel, "args")),
-            (("cb_color", str, 'blue'), ("Color de l'histograma:", 'colorcb'), (self.plot_color, "args")),
-            (("inf", float, round(self.lims[0], 3)), ("Límit inferior:", 'entry'), (self.plot_lims, "kwargs")),
-            (("sup", float, round(self.lims[1], 3)), ("Límit superior:", 'entry'), (self.plot_lims, "kwargs")),
-            (("mean", float, round(mean, 3)), ("Mitjana:", 'entry', {"state": "readonly"}), (self, "attr")),
-            (("stderr", float, round(std, 3)), ("Desviació estàndard RMS:", 'entry', {"state": "readonly"}), (self, "attr")),
-            (("skewness", float, round(skew, 3)), ("Asimetria:", 'entry', {"state": "readonly"}), (self, "attr")),
-            (("kurtosis", float, round(kurt, 3)), ("Curtosi:", 'entry', {"state": "readonly"}), (self, "attr")),
-            (("lower", float, round(lw, 3)), ("Llindar inferior (5%):", 'entry', {"state": "readonly"}), (self, "attr")),
-            (("q1", float, round(q1, 3)), ("Primer quartil (25%):", 'entry', {"state": "readonly"}), (self, "attr")),
-            (("q2", float, round(q2, 3)), ("Mediana (50%):", 'entry', {"state": "readonly"}), (self, "attr")),
-            (("q3", float, round(q3, 3)), ("Tercer quartil (75%):", 'entry', {"state": "readonly"}), (self, "attr")),
-            (("upper", float, round(tw, 3)), ("Llindar superior (95%):", 'entry', {"state": "readonly"}), (self, "attr")),
-            (("save", str, "Guardar"), ("Guardar dades i imatge:", 'button'), (self.guardar, "args"))
-            ]
+
+        self.widgets = {
+            "file": Widget(key="file", var_type=str, init=self.file.name,
+                       text="Arxiu:", widget="cb", widget_kwargs={"options": files},
+                       setter=self.plot_file),
+
+            "channel": Widget(key="channel", var_type=str, init=self.channel.name,
+                              text="Canal:", widget="cb", widget_kwargs={"options": channels},
+                              setter=self.plot_channel),
+
+            "cb_color": Widget(key="cb_color", var_type=str, init="blue",
+                               text="Color de l'histograma:", widget="colorcb",
+                               setter=self.plot_color),
+
+            "inf": Widget(key="inf", var_type=float, init=round(self.lims[0], 3),
+                          text="Límit inferior:", widget="entry",
+                          setter=self.plot_lims, mode="kwargs"),
+
+            "sup": Widget(key="sup", var_type=float, init=round(self.lims[1], 3),
+                          text="Límit superior:", widget="entry",
+                          setter=self.plot_lims, mode="kwargs"),
+
+            "mean": Widget(key="mean", var_type=float, init=round(mean, 3),
+                           text="Mitjana:", widget="entry", widget_kwargs={"state": "readonly"},
+                           setter=self, mode="attr"),
+
+            "stderr": Widget(key="stderr", var_type=float, init=round(std, 3),
+                             text="Desviació estàndard RMS:", widget="entry", widget_kwargs={"state": "readonly"},
+                             setter=self, mode="attr"),
+
+            "skewness": Widget(key="skewness", var_type=float, init=round(skew, 3),
+                               text="Asimetria:", widget="entry", widget_kwargs={"state": "readonly"},
+                               setter=self, mode="attr"),
+
+            "kurtosis": Widget(key="kurtosis", var_type=float, init=round(kurt, 3),
+                               text="Curtosi:", widget="entry", widget_kwargs={"state": "readonly"},
+                               setter=self, mode="attr"),
+
+            "lower": Widget(key="lower", var_type=float, init=round(lw, 3),
+                            text="Llindar inferior (5%):", widget="entry", widget_kwargs={"state": "readonly"},
+                            setter=self, mode="attr"),
+
+            "q1": Widget(key="q1", var_type=float, init=round(q1, 3),
+                         text="Primer quartil (25%):", widget="entry", widget_kwargs={"state": "readonly"},
+                         setter=self, mode="attr"),
+
+            "q2": Widget(key="q2", var_type=float, init=round(q2, 3),
+                         text="Mediana (50%):", widget="entry", widget_kwargs={"state": "readonly"},
+                         setter=self, mode="attr"),
+
+            "q3": Widget(key="q3", var_type=float, init=round(q3, 3),
+                         text="Tercer quartil (75%):", widget="entry", widget_kwargs={"state": "readonly"},
+                         setter=self, mode="attr"),
+
+            "upper": Widget(key="upper", var_type=float, init=round(tw, 3),
+                            text="Llindar superior (95%):", widget="entry", widget_kwargs={"state": "readonly"},
+                            setter=self, mode="attr"),
+
+            "save": Widget(key="save", var_type=str, init="Guardar",
+                           text="Guardar dades i imatge:", widget="button",
+                           setter=self.guardar)}
 
 class DirectionMean(BaseFigureWindow):
     def __init__(self, gestor):
@@ -175,9 +226,9 @@ class DirectionMean(BaseFigureWindow):
         self._freq = 0.5
         super().__init__(gestor, "Mostrar mitjana direccional", dim=(6,4))
 
-        self.plot, = self.ax.plot([], [], color='blue')
-        self.ax.set_xlabel(r'Length ($\mu$m)')
-        self.ax.set_ylabel(self.channel.ax_title)
+        self.plot, = self.axis.plot([], [], color='blue')
+        self.axis.set_xlabel(r'Length ($\mu$m)')
+        self.axis.set_ylabel(self.channel.ax_title)
         self.set_widgets()
 
     def plot_file(self, value):
@@ -186,11 +237,11 @@ class DirectionMean(BaseFigureWindow):
         
     def plot_channel(self, value):
         self.channel = value
-        self.ax.set_ylabel(self.channel.ax_title)
+        self.axis.set_ylabel(self.channel.ax_title)
         self.set_widgets()
 
-    def set_widgets(self, **kwargs):
-        self.compute_values(**kwargs)
+    def set_widgets(self):
+        self.compute_values()
         self.widgets['inf'].value.set(round(self.lims[0], 3))
         self.widgets['sup'].value.set(round(self.lims[1], 3))
         self.update_plot()
@@ -199,7 +250,7 @@ class DirectionMean(BaseFigureWindow):
         if inf is not None: self.lims = (inf, self.lims[1])
         if sup is not None: self.lims = (self.lims[0], sup)
 
-        self.ax.set_ylim(self.lims)
+        self.axis.set_ylim(self.lims)
         self.figure.tight_layout()
         self.figure.canvas.draw_idle()
     
@@ -210,11 +261,11 @@ class DirectionMean(BaseFigureWindow):
     def units(self, value):
         self._units = value
         if value: 
-            self.ax.set_xlabel('Length (μm)')
-            self.widgets['freq'].configure(state='readonly')
+            self.axis.set_xlabel('Length (μm)')
+            self.widgets['freq'].config(state='readonly')
         else: 
-            self.ax.set_xlabel('Time (min)')
-            self.widgets['freq'].configure(state='normal')
+            self.axis.set_xlabel('Time (min)')
+            self.widgets['freq'].config(state='normal')
 
         self.set_widgets()
 
@@ -271,8 +322,8 @@ class DirectionMean(BaseFigureWindow):
         self.lims = (self.mean.min(), self.mean.max())
     
     def update_plot(self):
-        self.ax.set_xlim(self.xval.min(), self.xval.max())
-        self.ax.set_ylim(self.lims)
+        self.axis.set_xlim(self.xval.min(), self.xval.max())
+        self.axis.set_ylim(self.lims)
 
         self.plot.set_data(self.xval, self.mean)
 
@@ -280,20 +331,46 @@ class DirectionMean(BaseFigureWindow):
         self.figure.tight_layout()
         self.figure.canvas.draw_idle()
 
-    def _grid(self):
+    def _create_widgets(self):
         files = ['Tots els fitxers'] + list(self.files.keys())
         channels = list(self.file.channel.keys())
 
         optxunits = {'Longitud (μm)': True, 'Temps (min)': False}
 
-        return [
-            (("file", str, self.file.name), ("Arxiu:", 'cb', {"options": files}), (self.plot_file, "args")),
-            (("channel", str, self.channel.name), ("Canal:", 'cb', {"options": channels}), (self.plot_channel, "args")),
-            (("cb_color", str, 'blue'), ("Color de l'histograma:", 'colorcb'), (self.plot_color, "args")),
-            (("inf", float, 0), ("Límit inferior:", 'entry'), (self.plot_lims, "kwargs")),
-            (("sup", float, 1), ("Límit superior:", 'entry'), (self.plot_lims, "kwargs")),
-            (("direction", float, True), ("Direcció:", 'radiobutton', {"options": {'H': True, 'V': False}, "vertical": False}), (self.direction, "args")),
-            (("units", float, True), ("Unitats:", 'radiobutton', {"options": optxunits}), (self.units, "args")),
-            (("freq", float, 0.5), ("Freqüència (Hz):", 'entry', {'state': 'readonly'}), (self.freq, "args")),
-            (("save", str, "Guardar"), ("Guardar dades i imatge:", 'button'), (self.guardar, "args"))
-            ]
+        self.widgets = {
+            "file": Widget(key="file", var_type=str, init=self.file.name,
+                    text="Arxiu:", widget="cb", widget_kwargs={"options": files},
+                    setter=self.plot_file),
+
+            "channel": Widget(key="channel", var_type=str, init=self.channel.name,
+                       text="Canal:", widget="cb", widget_kwargs={"options": channels},
+                       setter=self.plot_channel),
+
+            "cb_color": Widget(key="cb_color", var_type=str, init="blue",
+                        text="Color de l'histograma:", widget="colorcb",
+                        setter=self.plot_color),
+
+            "inf": Widget(key="inf", var_type=float, init=0,
+                   text="Límit inferior:", widget="entry",
+                   setter=self.plot_lims, mode="kwargs"),
+
+            "sup": Widget(key="sup", var_type=float, init=1,
+                   text="Límit superior:", widget="entry",
+                   setter=self.plot_lims, mode="kwargs"),
+
+            "direction": Widget(key="direction", var_type=bool, init=True,
+                         text="Direcció:", widget="radiobutton",
+                         widget_kwargs={"options": {"H": True, "V": False}, "direction": "h"},
+                         setter=self.direction),
+
+            "units": Widget(key="units", var_type=bool, init=True,
+                     text="Unitats:", widget="radiobutton", widget_kwargs={"options": optxunits},
+                     setter=self.units),
+
+            "freq": Widget(key="freq", var_type=float, init=0.5,
+                    text="Freqüència (Hz):", widget="entry", widget_kwargs={"state": "readonly"},
+                    setter=self.freq),
+
+            "save": Widget(key="save", var_type=str, init="Guardar",
+                    text="Guardar dades i imatge:", widget="button",
+                    setter=self.guardar)}

@@ -7,51 +7,47 @@ from drawing import mapdraw
 
 class RootInteraction:
     def __init__(self, parent):
-        self.parent = parent
+        self.root = parent.root
+        self.notebook = parent.notebook
+
+        self.get_file = parent.get_file
+        self.set_file = parent.set_file
         self.files = parent.files
 
         self._active_timer_id = None
         self._restants_timer_id = None
         self._drag_tab = None
 
+        self._root_binds()
+        self._notebook_binds()
+
+    def _root_binds(self):
         self.root.bind("<Configure>", self._trigger_resize)
 
         self.root.bind_all("<Up>", lambda e: self._next_tab(True, self.notebook))
         self.root.bind_all("<Down>", lambda e: self._next_tab(False, self.notebook))
-
         self.root.bind_all("<Right>", lambda e: self._next_tab(True, self.current_file.view.selector)
                            if self.current_file else "break")
         self.root.bind_all("<Left>", lambda e: self._next_tab(False, self.current_file.view.selector)
                            if self.current_file else "break")
 
+    def _notebook_binds(self):
         self.notebook.bind("<<NotebookTabChanged>>", self._on_file_changed)
         self.notebook.bind("<ButtonPress-1>", self._on_press)
         self.notebook.bind("<B1-Motion>", self._on_drag)
         self.notebook.bind("<ButtonRelease-1>", self._on_release)
 
     @property
-    def root(self):
-        return self.parent.root
-
-    @property
-    def notebook(self):
-        return self.parent.notebook
-
-    @property
     def current_file(self):
-        return self.parent.current_file
+        return self.get_file()
 
-    @current_file.setter
-    def current_file(self, value):
-        self.parent.current_file = value
-
-    def _next_tab(self, next: bool, notebook):
+    def _next_tab(self, forward: bool, notebook):
         if not notebook or not notebook.tabs():
             return "break"
 
         actual = notebook.index(notebook.select())
         total = notebook.index("end")
-        nova = (actual + 1) % total if next else (actual - 1) % total
+        nova = (actual + 1) % total if forward else (actual - 1) % total
         notebook.select(nova)
 
         return "break"
@@ -81,17 +77,15 @@ class RootInteraction:
         l canal/pestanya activa."""
         if not self.current_file: return
 
-        self.current_file.view.map.zoom.resize()
+        self.current_file.view.resize()
         self._active_timer_id = None
 
     # -----------------------
     def _resize_restants(self):
         """Executa el resize de la resta dels fitxers després de 1 segon."""
-        if not self.current_file: return
-
         for f in self.files.values():
             if f is not self.current_file:
-                f.view.map.zoom.resize()
+                f.view.resize()
 
         self._restants_timer_id = None
 
@@ -102,7 +96,7 @@ class RootInteraction:
 
         for f in self.files.values():
             if str(f.view.tab) == tab_id:
-                self.current_file = f
+                self.set_file(f)
                 f.view.map.header.set_channel(f.current_channel)
                 break
 
@@ -170,6 +164,8 @@ class MapInteraction:
         if not hasattr(self.map.model, "spectrum"): return
 
         pixels = coords_to_pixel([(event.xdata, event.ydata)], self.geometry.N, self.geometry.midaBase)[0]
+
+        if not self.map.model.controller.objects.mask[pixels[1], pixels[0]]: return
         self.map.model.spectrum.plot_pixel(*pixels)
 
     def _release(self, event):

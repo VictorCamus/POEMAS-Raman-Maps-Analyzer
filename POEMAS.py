@@ -11,7 +11,7 @@ def eixir():
 class Aplicacio: # Classe principal de l'aplicació que gestiona la interfície gràfica.
     def __init__(self, root):
         self.root = root
-        self.current_file = None
+        self._current_file = None
         self.files = dict()
 
         self.notebook = ttk.Notebook(self.root) # Crea un notebook per a les pestanyes.
@@ -24,6 +24,12 @@ class Aplicacio: # Classe principal de l'aplicació que gestiona la interfície 
         self.binds = RootInteraction(self)
 
         self.root.title("POEMAS - Interfície Gràfica")
+
+    def get_file(self):
+        return self._current_file
+
+    def set_file(self, file):
+        self._current_file = file
 
     def _init_message(self): # Mostra un missatge inicial quan s'obre l'aplicació.
         self.label_inici = ttk.Label(
@@ -48,7 +54,8 @@ class Aplicacio: # Classe principal de l'aplicació que gestiona la interfície 
         style.configure("TNotebook.Tab", font=('Helvetica', 14, 'bold'), padding=[10, 5], background="#121212", foreground="white"),
         style.map("TNotebook.Tab", background=[("selected", "#2811DA")])
         style.configure("TFrame", background=BG)
-        style.configure("TLabel", background=BG, foreground=FG, font=('Helvetica', 16))
+        style.configure("TLabelFrame", background=BG, foreground=FG)
+        style.configure("TLabel", background=BG, foreground=FG, font=('Helvetica', 9, 'bold'))
         style.configure("TNotebook", background=BG, borderwidth=0)
         style.configure("TMenu", font=('Helvetica', 12), background=BG, foreground=FG)
         style.configure("Green.Horizontal.TProgressbar", troughcolor='#e0e0e0', background='#2ecc71', thickness=18) # Barra de progrés verda

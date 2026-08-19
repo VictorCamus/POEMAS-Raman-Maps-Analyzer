@@ -4,7 +4,6 @@ from tkinter.ttk import Frame
 from drawing import mapdraw as map
 from drawing.plots import base_plot
 from process.images import copy_figure
-from window.labels import build_grid
 
 # Arxiu que gestiona els builders principals dels menús de l'aplicació, així com les finestres i funcionalitats comunes a tots els builders.
 
@@ -24,14 +23,18 @@ class BaseWindow:
 
         window = Toplevel(gestor.root)
         window.title(title)
+        window.resizable(False, False)
+
         self.main_frame = Frame(window)
-        self.main_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        self.main_frame.pack(padx=10, pady=10)
 
         self.control_frame = Frame(self.main_frame)
         self.control_frame.pack(side="left", fill="y", expand=True, padx=10, pady=10)
 
-        self.widgets = build_grid(self.control_frame, self._grid(), button = False)
-    
+        self._create_widgets()
+
+        for i, widget in enumerate(self.widgets.values()): widget.add(self.control_frame, row=i, col=0)
+
     @property
     def file(self):
         return self._file
@@ -114,8 +117,8 @@ class BaseWindow:
         current = self.channel
 
         comboCh.config(values=channels)
-        comboCh.options = dict(zip(channels, channels))
-        
+        comboCh.widget.options = dict(zip(channels, channels))
+
         if current.name in channels:
             comboCh.set(current.name)
             self.channel = current.name
@@ -218,11 +221,13 @@ class BaseMapWindow(BaseWindow):
             self.file.view.map.header.set_channel(ch)
             self.file.view.map.refresh_map()
 
+        self.update_fig()
+
 class BaseFigureWindow(BaseWindow):
     def __init__(self, gestor, nom, dim=(4,4)):
         super().__init__(gestor, nom)
 
-        self.figure, self.ax = base_plot(dim=dim)
+        self.figure, self.axis = base_plot(dim=dim)
         self.figure.tight_layout()
 
         self.fig_frame, self.canvas = self._init_figure(self.main_frame, self.figure)

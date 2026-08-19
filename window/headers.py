@@ -2,11 +2,11 @@ import numpy as np
 
 from tkinter.ttk import Frame
 from tkinter import messagebox
-from .labels import build_grid
+from .widgets import Widget
 from drawing.colormap import cmaps
 
 # Fitxer que crea la capçalera per a les pestanyes del notebook.
-# Conté també les mètodes per afegir etiquetes, camps d'entrada i comboboxes a la capçalera.
+# Conté també els mètodes per afegir etiquetes, camps d'entrada i combobox a la capçalera.
 
 class HeaderMap:
     def __init__(self, map):
@@ -23,26 +23,27 @@ class HeaderMap:
 
     def set_channel(self, channel):
         self.view.refresh(channel)
+        self.map.footer.view.widgets['track_z'].label.config(text=f'{channel.name} ({channel.units})')
         self._redraw(cmap = True, lims = True)
 
     def on_cmap_change(self, value):
         self.channel.color.cmap_c = value
         self._redraw(cmap = True)
     
-    def on_rev_change(self, value, widget):
+    def on_rev_change(self, value):
         ch = self.channel
         if ch.color.cmap_r != value and ch.color.limSup != ch.color.limInf:
             ch.color.limInf, ch.color.limSup = ch.color.limSup, ch.color.limInf
-            rb_climsup = widget["colSup"]
-            rb_climsup.value.set(ch.color.limSup)
+            rb_climsup = self.view.widgets["colSup"]
+            rb_climsup.set(ch.color.limSup)
             
-            rb_climinf = widget["colInf"]
-            rb_climinf.value.set(ch.color.limInf)
+            rb_climinf = self.view.widgets["colInf"]
+            rb_climinf.set(ch.color.limInf)
             
         ch.color.cmap_r = value
         self._redraw(cmap = True)
 
-    def on_lim_inf_change(self, value):
+    def on_lim_inf_change(self, value: float):
         if value >= self.channel.lims[1]:
             messagebox.showerror(
                 "Error en actualitzar la gràfica",
@@ -54,7 +55,7 @@ class HeaderMap:
         self.channel.lims[0] = value
         self._redraw(lims = True)
     
-    def on_lim_sup_change(self, value):
+    def on_lim_sup_change(self, value: float):
         if value <= self.channel.lims[0]:
             messagebox.showerror(
                 "Error en actualitzar la gràfica",
@@ -100,93 +101,72 @@ class ViewHeaderMap:
         self.frame = Frame(parent)
         self.frame.columnconfigure(0, weight=1)
 
-        self._editar_limits()
-        self._color_mapa_escala()
+        self._create_widgets()
 
     @property
     def channel(self):
         return self.controller.channel
 
-    def _color_mapa_escala(self): # Afegeix controls per canviar el color del mapa i de l'escala.
-        def _grid_color():
-            return [
-                (("cmap_c", str, self.channel.name),
-                 ("Color mapa:", 'cb', {"options": cmaps, "width": '10'}),
-                 (self.controller.on_cmap_change, "args")),
-                (("cscale", str, 'w'),
-                 ("Color escala:", 'radiobutton', {"options": {'B': 'w', 'N': 'k'}, 'vertical': False}),
-                 (self.controller.on_scale_change, "args")),
-            ]
+    def _create_widgets(self): # Afegeix controls per editar els límits del mapa.
+        self.widgets = {
+            'cmap_c': Widget(key='cmap_c', var_type=str, init=self.channel.name,
+                      text="Color mapa:", widget='cb',
+                      widget_kwargs={"options": cmaps, "width": '10'},
+                      setter=self.controller.on_cmap_change),
+            'cmap_r': Widget(key='cmap_r', var_type=bool, init=False,
+                      widget='radiobutton',
+                      widget_kwargs={"options": {'N': False, 'R': True}, 'direction': 'h'},
+                      setter=self.controller.on_rev_change),
+            'limSup': Widget(key='limSup', var_type=float, init=self.channel.lims[1],
+                      text="Valor màxim:", widget='entry', widget_kwargs={"width": 10},
+                      setter=self.controller.on_lim_sup_change),
+            'limInf': Widget(key='limInf', var_type=float, init=self.channel.lims[0],
+                      text="Valor mínim:", widget='entry', widget_kwargs={"width": 10},
+                      setter=self.controller.on_lim_inf_change),
+            'cscale': Widget(key='cscale', var_type=str, init='w',
+                      text="Color escala:", widget='radiobutton',
+                      widget_kwargs={"options": {'B': 'w', 'N': 'k'}, 'direction': 'h'},
+                      setter=self.controller.on_scale_change),
+            'colSup': Widget(key='colSup', var_type=str, init=self.channel.color.limSup,
+                      widget='radiobutton',
+                      widget_kwargs={'options': {'B': 'w', 'N': 'k'}, 'direction': 'h'},
+                      setter=self.controller.on_col_sup_change),
+            'colInf': Widget(key='colInf', var_type=str, init=self.channel.color.limInf,
+                      widget='radiobutton',
+                      widget_kwargs={'options': {'B': 'w', 'N': 'k'}, 'direction': 'h'},
+                      setter = self.controller.on_col_inf_change)}
 
-        def _grid_crev():
-            return [
-                (("cmap_r", bool, False),
-                (None, 'radiobutton', {"options": {'N': False, 'R': True}, 'vertical': False}),
-                (self.controller.on_rev_change, "args", {'widget': self.widgets_lims})),
-            ]
-        
-        self.widgets_scale = build_grid(self.frame, _grid_color(), row=0, col=3, button=False)
-        widget_rev = build_grid(self.frame, _grid_crev(), row=0, col=5, button=False)
-        self.widgets_scale.update(widget_rev)
+        layout = [(0, 3, 'cmap_c'), (0, 5, 'cmap_r'), (0, 7, 'limSup'), (0, 9, 'colSup'),
+                  (1, 3, 'cscale'),                   (1, 7, 'limInf'), (1, 9, 'colInf')]
 
-    def _editar_limits(self): # Afegeix controls per editar els límits del mapa.
-        def _grid_lims():
-            return [
-                (("limSup", float, self.channel.lims[1]),
-                 ("Valor màxim:", 'entry', {"width": 10}),
-                 (self.controller.on_lim_sup_change, "args")),
-                (("limInf", float, self.channel.lims[0]),
-                 ("Valor mínim:", 'entry', {"width": 10}),
-                 (self.controller.on_lim_inf_change, "args"))
-            ]
-        def _color_lims():
-            return [
-                (("colSup", str, self.channel.color.limSup),
-                 (None, 'radiobutton', {'options': {'B': 'w', 'N': 'k'}, 'vertical': False}),
-                 (self.controller.on_col_sup_change, "args")),
-                (("colInf", str, self.channel.color.limInf),
-                 (None, 'radiobutton', {'options': {'B': 'w', 'N': 'k'}, 'vertical': False}),
-                 (self.controller.on_col_inf_change, "args"))
-            ]
-
-        self.widgets_lims = build_grid(self.frame, _grid_lims(), row=0, col=7, button=False)
-        col_lims = build_grid(self.frame, _color_lims(), row=0, col=9, button=False)
-        self.widgets_lims.update(col_lims)
+        for row, col, key in layout: self.widgets[key].add(self.frame, row, col)
 
     def refresh(self, ch = None): # Canvia la capçalera en canviar de canal.
         if not ch: return
 
-        # ---- 1. Actualitzar els comboboxes dels colors del mapa----
-        combo_cmap = self.widgets_scale["cmap_c"]
-        combo_cmap.set(ch.color.cmap_c)
+        # ---- 1. Actualitzar els combobox dels colors del mapa----
+        self.widgets["cmap_c"].set(ch.color.cmap_c)
+        self.widgets["cmap_r"].set(ch.color.cmap_r)
 
-        rb_cmap_rev = self.widgets_scale["cmap_r"]
-        rb_cmap_rev.value.set(ch.color.cmap_r)
-
-        # ---- 2. Actualitzar els comboboxes dels colors de l'escala ----
-        rb_cscale = self.widgets_scale["cscale"]
-        rb_cscale.value.set(ch.color.scale)
-        
-        rb_climsup = self.widgets_lims["colSup"]
-        rb_climsup.value.set(ch.color.limSup)
-        
-        rb_climinf = self.widgets_lims["colInf"]
-        rb_climinf.value.set(ch.color.limInf)
+        # ---- 2. Actualitzar els combobox dels colors de l'escala ----
+        self.widgets["cscale"].set(ch.color.scale)
+        self.widgets["colSup"].set(ch.color.limSup)
+        self.widgets["colInf"].set(ch.color.limInf)
         
         # ---- 3. Actualitzar els camps d'entrada dels límits ----
-        self.widgets_lims["limInf"].value.set(f"{ch.lims[0]:g}")
-        self.widgets_lims["limSup"].value.set(f"{ch.lims[1]:g}")
+        self.widgets["limInf"].set(f"{ch.lims[0]:g}")
+        self.widgets["limSup"].set(f"{ch.lims[1]:g}")
 
 class HeaderSpec:
-    def __init__(self, map):
-        self.map = map
-        self.view = ViewHeaderSpec(parent=self.map.model.content, controller=self)
+    def __init__(self, spec):
+        self.spec = spec
+        self.view = ViewHeaderSpec(parent=self.spec.model.content, controller=self)
 
         self.xlabels = {'nm': 'λ (nm)', 'eV': 'E (eV)', '1/cm': r'Raman Shift (cm⁻¹)'}
 
     @property
     def channel(self):
-        return self.map.channel
+        return self.spec.channel
 
     @property
     def frame(self):
@@ -202,7 +182,7 @@ class HeaderSpec:
             return
 
         self.channel.lims[0] = value
-        self._redraw(lims=True)
+        self._redraw()
 
     def on_lim_sup_change(self, value):
         if value <= self.channel.lims[0]:
@@ -213,68 +193,77 @@ class HeaderSpec:
             return
 
         self.channel.lims[1] = value
-        self._redraw(lims=True)
+        self._redraw()
 
     def on_spectra_left_change(self, value):
         self.channel.spectra_lims[0] = value
-        self.map.axis.set_xlim(value, self.view.widgets_xlim['right'].value.get())
-        self.map.canvas.draw_idle()
-        self._update_spectra_Z(self.channel)
+        self.spec.axis.set_xlim(value, self.view.widgets['right'].get())
+        self.spec.canvas.draw_idle()
+        self._update_map(self.channel)
 
     def on_spectra_right_change(self, value):
         self.channel.spectra_lims[1] = value
-        self.map.axis.set_xlim(self.view.widgets_xlim['left'].value.get(), value)
-        self.map.canvas.draw_idle()
-        self._update_spectra_Z(self.channel)
+        self.spec.axis.set_xlim(self.view.widgets['left'].get(), value)
+        self.spec.canvas.draw_idle()
+        self._update_map(self.channel)
 
     def on_spectra_bottom_change(self, value):
-        self.map.axis.set_ylim(value, self.view.widgets_ylim['top'].value.get())
-        self.map.canvas.draw_idle()
+        self.spec.axis.set_ylim(value, self.view.widgets['top'].get())
+        self.spec.canvas.draw_idle()
 
     def on_spectra_top_change(self, value):
-        self.map.axis.set_ylim(self.view.widgets_ylim['bottom'].value.get(), value)
-        self.map.canvas.draw_idle()
+        self.spec.axis.set_ylim(self.view.widgets['bottom'].get(), value)
+        self.spec.canvas.draw_idle()
 
     def on_units_change(self, value):
-        self.map.axis.set_xlabel(self.xlabels[value])
-        spec = self.map.line.get_ydata()
+        self.spec.axis.set_xlabel(self.xlabels[value])
         xdata = self.channel.xdata[value]
 
-        self.map.line.set_data(xdata, spec)
-        self.channel.spectra_lims = [round(min(xdata), 3), round(max(xdata), 3)]
-        self.map.axis.set_xlim(*self.channel.spectra_lims)
+        self.spec.line.set_xdata(xdata)
+        self.spec.bkgline.set_xdata(xdata)
 
-        self.view.widgets_xlim['left'].value.set(self.channel.spectra_lims[0])
-        self.view.widgets_xlim['right'].value.set(self.channel.spectra_lims[1])
-        self.map.footer.view.widgets['track_x']._label.config(text = self.xlabels[value])
-        self.map.canvas.draw_idle()
-        self._update_spectra_Z(self.channel)
+        self.channel.spectra_lims = [round(min(xdata), 3), round(max(xdata), 3)]
+        self.spec.axis.set_xlim(*self.channel.spectra_lims)
+
+        self.view.widgets['left'].set(self.channel.spectra_lims[0])
+        self.view.widgets['right'].set(self.channel.spectra_lims[1])
+        self.spec.footer.view.widgets['track_x'].label.config(text = self.xlabels[value])
+        self.spec.canvas.draw_idle()
+        self._update_map(self.channel)
 
         return
 
     def on_data_change(self, value):
-        if not hasattr(self.map, 'line'): return
+        if not hasattr(self.spec, 'line'): return
 
-        self.map.line.set_visible(value)
-        self.map.canvas.draw_idle()
+        self.spec.line.set_visible(value)
+        self.spec.canvas.draw_idle()
 
     def on_log_change(self, value):
-        if not hasattr(self.map, 'line'): return
+        if not hasattr(self.spec, 'line'): return
 
         if value:
-            self.map.axis.set_yscale('log')
-            self.view.widgets_ylim['bottom'].value.set(1)
-            self.map.axis.set_ylim(bottom = 1)
+            self.spec.axis.set_yscale('log')
+            self.view.widgets['bottom'].set(1)
+            self.spec.axis.set_ylim(bottom = 1)
         else:
-            self.map.axis.set_yscale('linear')
-            self.view.widgets_ylim['bottom'].value.set(0)
-            self.map.axis.set_ylim(bottom = 0)
+            self.spec.axis.set_yscale('linear')
+            self.view.widgets['bottom'].set(0)
+            self.spec.axis.set_ylim(bottom = 0)
 
-        self.map.canvas.draw_idle()
+        self.spec.canvas.draw_idle()
 
-    def _redraw(self, lims=False, Z=False):
+    def on_bkg_change(self, value):
+        self.spec.bkgline.set_visible(value)
+        self.spec.plot_data()
+
+        self.spec.canvas.draw_idle()
+
+        self._update_map(self.channel)
+
+    def _redraw(self):
         ch = self.channel
-        map = self.map.model.map
+        map = self.spec.model.map
 
         map.image.set_clim(*ch.lims)
         map.cbar.limInf.set_text(f"{ch.lims[0]:g}" + (f" {ch.units}" if ch.units else ""))
@@ -283,20 +272,27 @@ class HeaderSpec:
 
         map.canvas.draw_idle()
 
-    def _update_spectra_Z(self, channel):
-        x = channel.xdata[self.view.widgets['units'].value.get()]
+    def _update_map(self, channel):
+        x = channel.xdata[self.view.widgets['units'].get()]
         spectra = channel.spectra
 
         lim_inf, lim_sup = channel.spectra_lims
         mask = ((x >= lim_inf) & (x <= lim_sup))
 
-        channel.Z = np.nansum(spectra[:, :, mask], axis=2)
+        if self.view.widgets['bkg'].get():
+            Z = np.nansum(spectra[:, :, mask], axis=2, dtype=float)
+        else:
+            Z = np.nansum(np.maximum(spectra[:, :, mask] - channel.spec_bkg[:, :, mask], 0), axis=2, dtype=float)
+
+        Z[~self.spec.model.controller.objects.mask] = np.nan
+        channel.Z = Z
+
         channel.update_lims()
 
-        self.map.model.map.header.view.widgets_lims["limInf"].value.set(channel.lims[0])
-        self.map.model.map.header.view.widgets_lims["limSup"].value.set(channel.lims[1])
+        self.spec.model.map.header.view.widgets["limInf"].set(channel.lims[0])
+        self.spec.model.map.header.view.widgets["limSup"].set(channel.lims[1])
 
-        self._redraw(lims=True, Z=True)
+        self._redraw()
 
 class ViewHeaderSpec:
     def __init__(self, parent, controller):
@@ -305,73 +301,53 @@ class ViewHeaderSpec:
         self.frame = Frame(parent)
         self.frame.columnconfigure(0, weight=1)
 
-        self._laser_units()
-        self._editar_limits_spectra()
-        self._marks()
+        self._create_widgets()
 
     @property
     def channel(self):
         return self.controller.channel
 
-    def _laser_units(self):
-        def _grid():
-            return [
-                (("laser", str, self.controller.map.model.controller.laser),
-                 ('λ₀ (nm):', 'entry', {"state": 'readonly', "width": 8})),
+    def _create_widgets(self):
+        self.widgets = {
+            'laser': Widget(key='laser', var_type=str, init=self.controller.spec.model.controller.laser,
+                     text='λ₀ (nm):', widget='entry', widget_kwargs={"state": 'readonly', "width": 8}),
 
-                (("units", str, 'nm'),
-                 ("Unitats", 'cb', {"options": ["nm", "eV", "1/cm"], "width": 8}),
-                 (self.controller.on_units_change, "args"))
-            ]
+            'left':  Widget(key="left", var_type=float, init=self.channel.spectra_lims[0],
+                     text="Eix X", widget='entry', widget_kwargs={"width": 10},
+                     setter=self.controller.on_spectra_left_change),
 
-        self.widgets = build_grid(self.frame, _grid(), row=0, col=1, button=False)
+            'right': Widget(key="right", var_type=float, init=self.channel.spectra_lims[1],
+                     widget='entry', widget_kwargs={"width": 10},
+                     setter=self.controller.on_spectra_right_change),
 
-    def _editar_limits_spectra(self):
-        def _grid_xlim_spectra():
-            return [
-                (("left", float, self.channel.spectra_lims[0]),
-                 ("Eix X", 'entry', {"width": 10}),
-                 (self.controller.on_spectra_left_change, "args")),
+            'data':  Widget(key = "data", var_type = bool, init = True,
+                     text = "Dades:", widget = 'checkbutton',
+                     setter = self.controller.on_data_change),
 
-                (("right", float, self.channel.spectra_lims[1]),
-                 ("", 'entry', {"width": 10}),
-                 (self.controller.on_spectra_right_change, "args"))
-            ]
+            'log': Widget(key='log', var_type=bool, init=False,
+                          text="Log Y:", widget='checkbutton',
+                          setter=self.controller.on_log_change),
 
-        def _grid_ylim_spectra():
-            return [
-                (("bottom", float, 0),
-                 ("Eix Y", 'entry', {"width": 10}),
-                 (self.controller.on_spectra_bottom_change, "args")),
+            'units': Widget(key="units", var_type=str, init='nm',
+                     text="Unitats", widget='cb', widget_kwargs={"options": ["nm", "eV", "1/cm"], "width": 8},
+                     setter = self.controller.on_units_change),
 
-                (("top", float, 1),
-                 ("", 'entry', {"width": 10}),
-                 (self.controller.on_spectra_top_change, "args"))
-            ]
+            'bottom': Widget(key = "bottom", var_type = float, init = 0,
+                      text = "Eix Y", widget = 'entry', widget_kwargs = {"width": 10},
+                      setter = self.controller.on_spectra_bottom_change),
 
-        self.widgets_xlim = build_grid(self.frame, _grid_xlim_spectra(), row=0, col=3, button=False, vertical = False)
-        self.widgets_ylim = build_grid(self.frame, _grid_ylim_spectra(), row=1, col=3, button=False, vertical = False)
+            'top':   Widget(key = 'top', var_type = float, init = 1,
+                     widget = 'entry', widget_kwargs = {"width": 10},
+                     setter = self.controller.on_spectra_top_change),
 
-    def _marks(self):
-        def _grid_data_bkg():
-            return [
-                (("data", bool, True),
-                 ("Dades:", 'checkbutton'),
-                 (self.controller.on_data_change, "args")),
-                (("bkg", bool, True),
-                 ("Fons:", 'checkbutton'),
-                 (self.controller.on_data_change, "args"))
-            ]
+            'bkg': Widget(key="bkg", var_type=bool, init=True,
+                          text="Fons:", widget='checkbutton',
+                          setter = self.controller.on_bkg_change),
 
-        def _grid_log_etiq():
-            return [
-                (("log", bool, False),
-                 ("Log Y:", 'checkbutton'),
-                 (self.controller.on_log_change, "args")),
-                (("etiq", bool, False),
-                 ("Etiquetes:", 'checkbutton'),
-                 (self.controller.on_log_change, "args"))
-            ]
+            'etiq':  Widget(key = "etiq", var_type = bool, init = False,
+                     text = "Etiquetes:", widget = 'checkbutton')}
 
-        self.marks = build_grid(self.frame, _grid_data_bkg(), row=0, col=7, button=False)
-        self.marks.update(build_grid(self.frame, _grid_log_etiq(), row=0, col=9, button=False))
+        layout = [(0, 1, 'laser'), (0, 3, 'left'),   (0, 5, 'right'), (0, 7, 'data'), (0, 9, 'log'),
+                  (1, 1, 'units'), (1, 3, 'bottom'), (1, 5, 'top'),   (1, 7, 'bkg'),  (1, 9, 'etiq')]
+
+        for row, col, key in layout: self.widgets[key].add(self.frame, row, col)

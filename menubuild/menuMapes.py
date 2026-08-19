@@ -5,13 +5,13 @@ from classes import ChannelData
 from .base import BaseMenu
 from window import BaseWindow
 from process.shiftphase import cross_correlation_shift
-from window.labels import create_tab
+from window.widgets import create_tab, Widget
 
 class GestorMapes(BaseMenu): # Classe que gestiona les accions relacionades amb el zoom de les imatges.
     ordre = 40 # Atribut per a ordenar els menús (opcional)
     
-    def __init__(self, app, get_current, set_current):
-        super().__init__(app, get_current, set_current)
+    def __init__(self, app):
+        super().__init__(app)
 
     def registrar_menu(self, menu):
         accions = [
@@ -39,20 +39,36 @@ class OperarMaps(BaseWindow):
         
         super().__init__(gestor, "Operar amb canals")
 
-    def _grid(self):
+    def _create_widgets(self):
         list_files, channels, initCh = self.compare_files()
         
         operations = {"Suma (F2+F1)": "sum", "Resta (F2-F1)": "subs",
                         "Multiplicació (F2*F1)": "mult", "Divisió (F2/F1)": "div"}
 
-        return [
-            (("file_ref", str, self.file_ref.name), ("Arxiu Referència (F1)", 'cb', {"options": list_files[1:]}), (self, "attr")),  
-            (("file", str, self.file.name), ("Arxiu 2 (F2)", 'cb', {"options": list_files}), (self, "attr")),
-            (("channel", str, initCh), ("Canal", 'cb', {"options": channels}), (self, "attr")),
-            (("opt", str, "subs"), ("Operació", 'radiobutton', {"options": operations}), (self, "attr")),
-            (("new_chname", str, None), ("Nom nou canal", 'entry'), (self, "attr")),
-            (("newCh", str, "Aplicar"), ("", 'button'), (self.apply_op, "args"))
-            ]
+        self.widgets = {
+            "file_ref": Widget(key="file_ref", var_type=str, init=self.file_ref.name,
+                           text="Arxiu Referència (F1)", widget="cb", widget_kwargs={"options": list_files[1:]},
+                           setter=self, mode="attr"),
+
+            "file": Widget(key="file", var_type=str, init=self.file.name,
+                           text="Arxiu 2 (F2)", widget="cb", widget_kwargs={"options": list_files},
+                           setter=self, mode="attr"),
+
+            "channel": Widget(key="channel", var_type=str, init=initCh,
+                              text="Canal", widget="cb", widget_kwargs={"options": channels},
+                              setter=self, mode="attr"),
+
+            "opt": Widget(key="opt", var_type=str, init="subs",
+                          text="Operació", widget="radiobutton", widget_kwargs={"options": operations},
+                          setter=self, mode="attr"),
+
+            "new_chname": Widget(key="new_chname", var_type=str, init=None,
+                                 text="Nom nou canal", widget="entry",
+                                 setter=self, mode="attr"),
+
+            "newCh": Widget(key="newCh", var_type=str, init="Aplicar",
+                            widget="button",
+                            setter=self.apply_op)}
     
     def base_op(self, files):
         file_ref = self.file_ref
@@ -96,16 +112,29 @@ class ShiftMaps(BaseWindow):
     def __init__(self, gestor):
         super().__init__(gestor, "Ajustar mapes desplaçats")
     
-    def _grid(self):
+    def _create_widgets(self):
         list_files, channels, initCh = self.compare_files()
 
-        return [
-            (("file_ref", str, self.file_ref.name), ("Arxiu Referència (F1)", 'cb', {"options": list_files[1:]}), (self, "attr")),  
-            (("file", str, self.file.name), ("Arxiu 2 (F2)", 'cb', {"options": list_files}), (self, "attr")),
-            (("channel", str, initCh), ("Canal", 'cb', {"options": channels}), (self, "attr")),
-            (("phcorr", str, "Aplicar"), ("Dibuixa la correlació de fase", 'button'), (self.phcorr, "args")),
-            (("newCh", str, "Aplicar"), ("Obtindre nou canal:", 'button'), (self.apply_op, "args")),
-            ]
+        self.widgets = {
+            "file_ref": Widget(key="file_ref", var_type=str, init=self.file_ref.name,
+                           text="Arxiu Referència (F1)", widget="cb", widget_kwargs={"options": list_files[1:]},
+                           setter=self, mode="attr"),
+
+            "file": Widget(key="file", var_type=str, init=self.file.name,
+                           text="Arxiu 2 (F2)", widget="cb", widget_kwargs={"options": list_files},
+                           setter=self, mode="attr"),
+
+            "channel": Widget(key="channel", var_type=str, init=initCh,
+                              text="Canal", widget="cb", widget_kwargs={"options": channels},
+                              setter=self, mode="attr"),
+
+            "phcorr": Widget(key="phcorr", var_type=str, init="Aplicar",
+                             text="Dibuixa la correlació de fase", widget="button",
+                             setter=self.phcorr),
+
+            "newCh": Widget(key="newCh", var_type=str, init="Aplicar",
+                            text="Obtindre nou canal:", widget="button",
+                            setter=self.apply_op)}
     
     def phcorr(self, event):
         if self.file_key == "Tots els mapes":
@@ -166,7 +195,7 @@ class ShiftMaps(BaseWindow):
             f.geometry.midaBase = np.array([f.geometry.N[0] * px, f.geometry.N[1] * py])
             for ch in f.channel.values(): ch.Z = ch.Z[y0:y1, x0:x1]
 
-            for prof in f.objects.profile.values(): prof.line = [(x - x0, y - y0) for x, y in prof.line]
+            for prof in f.objects.profiles.values(): prof.line = [(x - x0, y - y0) for x, y in prof.line]
             f.view.map.zoom.base_size()
 
 class TancarMaps(BaseWindow):
@@ -206,12 +235,19 @@ class TancarMaps(BaseWindow):
         first_channel = next(iter(self.file.channel.values()))
         self.file.view.selector.select(first_channel.tab)
 
-    def _grid(self):
+    def _create_widgets(self):
         files = ['Tots els mapes'] + list(self.files.keys())
         channels = list(self.file.channel.keys())
 
-        return [
-            (("file", str, self.file.name), ("Arxiu:", 'cb', {"options": files}), (self, "attr")),  
-            (("channel", str, self.channel.name), ("Canal:", 'cb', {"options": channels}), (self, "attr")),
-            (("tancar", str, "Aplicar"), ("Tancar:", 'button'), (self.tancar_canal, "args"))
-            ]
+        self.widgets = {
+            "file": Widget(key="file", var_type=str, init=self.file.name,
+                    text="Arxiu:", widget="cb", widget_kwargs={"options": files},
+                    setter=self, mode="attr"),
+
+            "channel": Widget(key="channel", var_type=str, init=self.channel.name,
+                       text="Canal:", widget="cb", widget_kwargs={"options": channels},
+                       setter=self, mode="attr"),
+
+            "tancar": Widget(key="tancar", var_type=str, init="Aplicar",
+                      text="Tancar:", widget="button",
+                      setter=self.tancar_canal)}
