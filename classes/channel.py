@@ -17,6 +17,7 @@ class ChannelData:  # Crea canals per a cada tipus de mapa dins d'un fitxer.
     spectra: np.ndarray = None
     spec_bkg: np.ndarray = None
     spectra_lims: list[float] = None
+    spec_units: str = None
     fits: Dict[str, FitResult] = field(default_factory = dict)
     color: Colors = None
 
@@ -26,9 +27,11 @@ class ChannelData:  # Crea canals per a cada tipus de mapa dins d'un fitxer.
         if self.Z is None and self.spectra is not None:
             self.spectra = ccd_correct(self.xdata['nm'], self.spectra)
             self.spec_bkg = np.zeros_like(self.spectra)
-            self.Z = np.nansum(self.spectra, axis = 2, dtype=float)
-            self.spectra_lims = [round(self.xdata['nm'][0], 3), round(self.xdata['nm'][-1], 3)]
 
+            self.Z = np.nansum(self.spectra, axis = 2, dtype=float)
+            self.spectra_lims = [round(self.xdata[self.units][0], 3), round(self.xdata[self.units][-1], 3)]
+
+        self.spec_units = 'cts'
         if self.lims is None: self.update_lims()
 
     @property

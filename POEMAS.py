@@ -45,7 +45,8 @@ class Aplicacio: # Classe principal de l'aplicació que gestiona la interfície 
         self.menu = Menu(self.root, bg="#121212", fg="white") # Crea un menú principal per a l'aplicació...
         self.gestors = BuildMenu(self)
 
-    def _init_style(self): # Configura l'estil de la interfície gràfica.
+    @staticmethod
+    def _init_style(): # Configura l'estil de la interfície gràfica.
         style = ttk.Style()
         style.theme_use('clam') # Tema visual de l'aplicació
         BG = "#121212"

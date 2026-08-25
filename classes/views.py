@@ -1,6 +1,7 @@
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from abc import ABC, abstractmethod
 import numpy as np
+from matplotlib.colors import TABLEAU_COLORS
 
 from classes.objects import ProfilePlot
 from classes.interactions import MapInteraction
@@ -15,8 +16,8 @@ class FigureView(ABC):
     def __init__(self, model, column: int = 0):
         self.model = model
 
-        self._create_plot()
         self._create_header()
+        self._create_plot()
         self._create_canvas()
         self._create_footer()
         self._create_objects()
@@ -98,7 +99,10 @@ class MapView(FigureView):
     def refresh_map(self, ch=None):
         if not ch: ch = self.channel
 
-        mapdraw.update_map(self.image, ch.color.cmap, ch.Z, ch.lims, ch.units, mida=self.geometry.midaBase,
+        if ch.name == 'Spectra': units = ch.spec_units
+        else: units = ch.units
+
+        mapdraw.update_map(self.image, ch.color.cmap, ch.Z, ch.lims, units, mida=self.geometry.midaBase,
                        colLims=ch.color.lims, cbar=self.cbar)
         self.escala.color = ch.color.scale
         self.image.set_clim(*ch.lims)
@@ -118,7 +122,7 @@ class SpecView(FigureView):
         return self.header.view.widgets['units'].get()
 
     def _create_plot(self):
-        self.figure, self.axis = base_plot(xtitle = 'λ (nm)', ytitle = 'Intensity (cts)')
+        self.figure, self.axis = base_plot(xtitle = self.header.xlabels[self.channel.units], ytitle = 'Intensity (cts)')
         self.figure.subplots_adjust(left=0.2, right=0.95, bottom=0.2, top=0.8)
 
     def _create_header(self):
@@ -151,6 +155,7 @@ class SpecView(FigureView):
         self.plot_data()
 
     def plot_data(self):
+        colors = list(TABLEAU_COLORS.values())
         ch = self.channel
         spec = ch.spectra[*self.coords]
         bkg = ch.spec_bkg[*self.coords]
@@ -168,14 +173,21 @@ class SpecView(FigureView):
         self.bkgline.set_ydata(bkg)
 
         ytotal = 0
-        for fit in self.channel.fits.values():
-            for name, peak in fit.peaks.items():
+        fit_key = self.header.view.fit_key
+
+        for fitplot in self.fitline.values():
+            fitplot.remove()
+            self.fitline = {}
+
+        if fit_key != 'rawdata':
+            fit = self.channel.fits[fit_key]
+            for i, (name, peak) in enumerate(fit.peaks.items()):
                 ydata = peak.func(xdata, *(param[self.coords] for param in peak.params.values()))
+                self.fitline[name] = self.axis.fill_between(xdata, ydata, 0, color=colors[i + 1], alpha=0.6)
                 ytotal += ydata
-                self.update_peak(name, xdata, ydata)
 
             if self.header.view.widgets["bkg"].get(): ytotal += bkg
-            self.fitline['All'].set_ydata(ytotal)
+            self.fitline['All'], = self.axis.plot(xdata, ytotal, color = 'k')
 
         top = int(1.1*nanmax(spec))
         self.axis.set_ylim(top = top)

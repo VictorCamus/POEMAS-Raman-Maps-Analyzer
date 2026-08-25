@@ -34,14 +34,22 @@ FuncParams = {
 }
 
 DEFAULT_PARAMS = {
-    'x0':   {'value': 0.0, 'min': -np.inf, 'max': np.inf},
-    'FWHM': {'value': 5.0, 'min': 0.0,  'max': np.inf},
-    'sigma':{'value': 5.0, 'min': 0.0,  'max': np.inf},
-    'gamma':{'value': 1.0, 'min': 0.0,  'max': np.inf},
-    'A':   {'value': 100.0, 'min': 0.0,  'max': np.inf},
-    'tau': {'value': 1.0, 'min': 0.0,  'max': np.inf},
-    'C':   {'value': 0.0, 'min': -np.inf,  'max': np.inf},
+    'x0':    {'value': 0.0,   'min': -np.inf, 'max': np.inf, 'color': 'viridis', 'dim': 1},
+    'FWHM':  {'value': 5.0,   'min': 0.0,     'max': np.inf, 'color': 'cividis', 'dim': 1},
+    'sigma': {'value': 5.0,   'min': 0.0,     'max': np.inf, 'color': 'inferno', 'dim': 1},
+    'gamma': {'value': 1.0,   'min': 0.0,     'max': np.inf, 'color': 'inferno', 'dim': 1},
+    'A':     {'value': 100.0, 'min': 0.0,     'max': np.inf, 'color': 'hot',   'dim': 0},
+    'tau':   {'value': 1.0,   'min': 0.0,     'max': np.inf, 'color': 'Reds',    'dim': 1},
+    'C':     {'value': 0.0,   'min': -np.inf, 'max': np.inf, 'color': 'gray',   'dim': 0}
 }
+
+def get_units(dim, units):
+    super = {2: '²', 3: '³'}
+
+    if dim == 0: return 'cts'
+    if dim == 1: return units
+
+    return f'{units}{super[dim]}'
 
 def linear_combination(names, funcs):
     func_list = [Functions[f] for f in funcs]

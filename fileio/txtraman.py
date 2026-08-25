@@ -43,7 +43,7 @@ def load(file_list, fileclass):
             xdata['eV'] = raman_to_eV(q, laser)
             xdata['1/cm'] = q
 
-    channels['Spectra'] = ChannelData(name='Spectra', units = 'cts', xdata=xdata, spectra=spectra)
+    channels['Spectra'] = ChannelData(name='Spectra', units = xunits, xdata=xdata, spectra=spectra)
     data = {'channel': channels, 'geometry': Geometry(N, mida), 'objects': ObjectData(), 'laser': laser}
 
     return fileclass(**data)

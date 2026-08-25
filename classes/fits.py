@@ -39,6 +39,7 @@ class PeakResult:
 @dataclass
 class FitResult:
     name: str
+    units: str
     peaks: dict[str, PeakResult] = field(default_factory=dict)
 
 class FitSpec(BaseWindow):
@@ -59,10 +60,6 @@ class FitSpec(BaseWindow):
         self.peaks_frame = LabelFrame(self.main_frame, text='Pics')
         self.peaks_frame.pack(fill='both', expand=True)
 
-    def new_name(self, value, peak):
-        self.peaks[value] = self.peaks.pop(peak.name)
-        self.peaks[value].name = value
-
     def _add_peak(self, value):
         i = len(self.peaks)
         colors = list(TABLEAU_COLORS.values())
@@ -79,7 +76,7 @@ class FitSpec(BaseWindow):
         widgets = {
             'name': Widget(key='name', var_type = str, init=peak.name,
                     text='Nom:', widget='entry', widget_kwargs={'width': 10},
-                    setter = self.new_name, setter_kwargs = {'peak': peak}),
+                    setter = peak, mode = 'attr'),
 
             'function': Widget(key='function', var_type = str, init = peak.function,
                         text='Funció:', widget='cb', widget_kwargs={'options': Functions.keys(), 'width': 10},
@@ -191,13 +188,15 @@ class FitSpec(BaseWindow):
         return linear_combination(names, funcs)
 
     def _create_fit_result(self):
-        result = FitResult(name = self.widgets['name'].get())
+        result = FitResult(name = self.widgets['name'].get(), units = self.spec.header.view.widgets['units'].get())
 
         for name, peak in self.peaks.items():
             result.peaks[name] = PeakResult(name = name, function = peak.function)
 
             for par in peak.params:
                 result.peaks[name].params[par] = np.full(self.channel.Z.shape, np.nan, dtype=float)
+
+            result.r2 = np.full(self.channel.Z.shape, np.nan, dtype=float)
 
         return result
 
@@ -224,9 +223,9 @@ class FitSpec(BaseWindow):
 
                 params = result.params
                 yfit = model(xdata, params)
-                success, r2 = self._valid_fit(result, ydata, yfit)
+                r2 = self._r2(ydata, yfit)
 
-                if not success:
+                if not result.success or any(p.stderr is None for p in params.values()):
                     params = init_params.copy()
                     continue
 
@@ -234,11 +233,18 @@ class FitSpec(BaseWindow):
                     for par_name in peak.params:
                         fit_result.peaks[name].params[par_name][i, j] = params[f'{name}_{par_name}'].value
 
+                    fit_result.r2[i, j] = r2
+
+        name = self.widgets['name'].get()
         if not 'Fits' in self.file.channel:
-            self.channel.fits = {self.widgets['name'].get(): fit_result}
+            self.channel.fits = {name: fit_result}
 
         else:
-            self.channel.fits[self.widgets['name'].get()] = fit_result
+            self.channel.fits[name] = fit_result
+
+        combofit = self.spec.header.view.widgets['fit'].widget
+        combofit.options[name] = name
+        combofit.config(values = list (combofit.options.keys()))
 
     def _init_fit(self):
         mask = np.isfinite(self.xdata)
@@ -253,23 +259,6 @@ class FitSpec(BaseWindow):
         return x, model, params, mask
 
     @staticmethod
-    def _valid_fit(result, y, yfit):
-
-        if not result.success:
-            return False, np.nan
-
-        ss_res = np.sum((y - yfit) ** 2)
-        ss_tot = np.sum((y - np.mean(y)) ** 2)
-
-        if ss_tot == 0: return False, np.nan
-
-        r2 = 1 - ss_res / ss_tot
-
-        if any(p.stderr is None for p in result.params.values()): return False, np.nan
-
-        return True, r2
-
-    @staticmethod
     def _fit(x, y, model, params):
         def residual(params):
             return model(x, params) - y
@@ -279,6 +268,15 @@ class FitSpec(BaseWindow):
 
         except (ValueError, RuntimeError) as e:
             return None
+
+    @staticmethod
+    def _r2(y, yfit):
+        ss_res = np.sum((y - yfit) ** 2)
+        ss_tot = np.sum((y - np.mean(y)) ** 2)
+
+        r2 = 1 - ss_res / ss_tot
+
+        return r2
 
     def _draw_fit(self, y, params, r2 = None):
         self.spec.fitline['All'].set_ydata(y)
@@ -302,14 +300,17 @@ class FitSpec(BaseWindow):
 
         ydata = spectra[*self.spec.coords][xmask] - bkg[*self.spec.coords][xmask]
         result = self._fit(xdata, ydata, model, init_params)
-        yfit = model(xdata, result.params)
-        success, r2 = self._valid_fit(result, ydata, yfit)
 
-        if result is None or success is False:
+        if result is not None:
+            if result.success or not any(p.stderr is None for p in result.params.values()): pass
+        else:
             messagebox.showerror('Error', "L'ajust ha fallat. Prova a introduir uns altres paràmetres inicials.")
             self.widgets['r2'].set('')
             return
 
+        yfit = model(xdata, result.params)
+
+        r2 = self._r2(ydata, yfit)
         self._draw_fit(yfit, result.params, r2)
 
     def get_config(self):
@@ -379,12 +380,6 @@ class FitSpec(BaseWindow):
         self.widgets = {
             'name': Widget(key='name', var_type=str, init=self.config.name,
                     text='Nom:', widget='entry'),
-
-            'rangInf': Widget(key='rangInf', var_type=float, init=self.config.rang[0],
-                       text='X mín:', widget='entry'),
-
-            'rangSup': Widget(key='rangSup', var_type=float, init=self.config.rang[1],
-                       text='X màx:', widget='entry'),
 
             'r2': Widget(key='r2', var_type=float, init='',
                        text='R²', widget='entry', widget_kwargs = {'state': 'readonly'}),

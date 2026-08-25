@@ -69,6 +69,8 @@ cmaps_matplotlib = [
     "autumn",
     "winter",
     "gray",
+    "bone",
+    "hot"
 ]
 
 cmaps = cmaps_custom + cmaps_matplotlib

@@ -1,11 +1,12 @@
-from numpy import interp, nan, percentile
-from pandas import read_table
+import numpy as np
 
 def ccd_correct(xdata, spectra):
-    CCD_Data = read_table('CCD/CCD.csv', delimiter=' ', decimal=',', usecols=[0, 1], header=None)
+    with open('CCD/CCD.csv', encoding='utf-8') as f:
+        CCD_Data = np.loadtxt((line.replace(',', '.') for line in f), delimiter=' ', usecols=(0, 1))
+
     # spectra -= percentile(spectra, 1)
-    QE = interp(xdata, CCD_Data[0], CCD_Data[1], left=nan, right=nan)
-    QE[QE < 0.05] = nan
+    QE = np.interp(xdata, CCD_Data[0], CCD_Data[1], left=np.nan, right=np.nan)
+    QE[QE < 0.05] = np.nan
     spectra /= QE
     spectra[spectra < 0] = 0
 

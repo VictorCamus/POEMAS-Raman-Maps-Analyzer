@@ -163,7 +163,9 @@ def add_combobox(func, frame, set_value=None, options=None, width = 18):
     if not isinstance(options, dict): options = dict(zip(options, options))
 
     labels = list(options.keys())
-    initial_key = next((k for k, v in options.items() if v == set_value.get()), labels[0])
+
+    if labels: initial_key = next((k for k, v in options.items() if v == set_value.get()), labels[0])
+    else: initial_key = ''
 
     display_var = StringVar(frame, value=initial_key)
     combo = Combobox(frame, values=labels, state="readonly", textvariable=display_var, font=('Helvetica', 9), width = width)

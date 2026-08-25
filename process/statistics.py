@@ -1,6 +1,6 @@
 import numpy as np
-import pandas as pd
 from matplotlib.ticker import AutoLocator, ScalarFormatter
+
 from process.basics import truncar_significatives
 
 def guardar_histograma(fig, ax, z, lims, carpeta, name, title=None, nbins=100, weight=False, nom=None):
@@ -20,8 +20,17 @@ def guardar_histograma(fig, ax, z, lims, carpeta, name, title=None, nbins=100, w
 
     # 2. BOXPLOT
     boxFig = boxplot(ax, z, histLims, name = name, ylabel=title, weight=weight)
-    databox = get_box_plot_data([name], boxFig)
-    databox.to_csv(f"{basePath}/{name} Boxplot data.txt", sep='\t', index=False, float_format='%.3f')
+    databox = save_boxplot_data(name, boxFig)
+
+    width = max(len(label) for label in databox)
+
+    with open(f"{basePath}/{name} Boxplot data.txt", 'w', encoding='utf-8') as f:
+        for label, value in databox.items():
+            if isinstance(value, (int, float, np.number)):
+                value = f'{value:.3f}'
+
+            f.write(f'{label:<{width}}\t{value}\n')
+
     fig.subplots_adjust(left=0.2, bottom=0.15)
     fig.savefig(f"{basePath}/{name} Boxplot.png")
     remove_boxplot(boxFig)
@@ -169,42 +178,31 @@ def calcula_boxplot_ponderat(z, w, label): # Calcula les estadístiques del boxp
 
     return stats
     
-def get_box_plot_data(labels, bp):
-    import numpy as np
-    rows_list = []
+def save_boxplot_data(label, bp, i = 0):
+    data = {
+        'label': label,
+        'lower_whisker': bp['whiskers'][i * 2].get_ydata()[1],
+        'upper_whisker': bp['whiskers'][i * 2 + 1].get_ydata()[1],
+        'median': bp['medians'][i].get_ydata()[1],
+    }
 
-    for i in range(len(labels)):
-        dict1 = {}
-        dict1['label'] = labels[i]
+    # Mean
+    if 'means' in bp and len(bp['means']) > i:
+        data['mean'] = bp['means'][i].get_ydata()[1]
+    else:
+        data['mean'] = np.nan
 
-        # Whiskers (sempre Line2D)
-        dict1['lower_whisker'] = bp['whiskers'][i*2].get_ydata()[1]
-        dict1['upper_whisker'] = bp['whiskers'][(i*2)+1].get_ydata()[1]
+    # Quartils
+    box = bp['boxes'][i]
 
-        # Median (Line2D)
-        dict1['median'] = bp['medians'][i].get_ydata()[1]
+    if hasattr(box, "get_ydata"):
+        y = box.get_ydata()
+        data['lower_quartile'] = y[1]
+        data['upper_quartile'] = y[2]
 
-        # Mean (pot no existir!)
-        if 'means' in bp and len(bp['means']) > i:
-            dict1['mean'] = bp['means'][i].get_ydata()[1]
-        else:
-            dict1['mean'] = np.nan
+    else:
+        verts = box.get_path().vertices[:, 1]
+        data['lower_quartile'] = np.min(verts)
+        data['upper_quartile'] = np.max(verts)
 
-        # 🔥 BOXES: compatible amb Line2D i PathPatch
-        box = bp['boxes'][i]
-
-        if hasattr(box, "get_ydata"):
-            # Cas antic: Line2D
-            y = box.get_ydata()
-            dict1['lower_quartile'] = y[1]
-            dict1['upper_quartile'] = y[2]
-
-        else:
-            # Cas patch_artist=True: PathPatch
-            verts = box.get_path().vertices[:, 1]
-            dict1['lower_quartile'] = np.min(verts)
-            dict1['upper_quartile'] = np.max(verts)
-
-        rows_list.append(dict1)
-
-    return pd.DataFrame(rows_list)
+    return data
