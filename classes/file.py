@@ -14,7 +14,6 @@ class FileData: # Crea pestanyes per a cada fitxer o mapa o canal.
     channel: Dict[str, ChannelData]
     geometry: Geometry
     objects: ObjectData = None
-    laser: float = None
 
     def __post_init__(self):
         self.current_channel = next(iter(self.channel.values()))

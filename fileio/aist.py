@@ -1,6 +1,8 @@
 import struct
 import numpy as np
-from classes import ChannelData, Geometry, ObjectData
+import matplotlib.pyplot as plt
+
+from classes import ChannelData, Geometry, ObjectData, SpecData
 from process.converter import nm_to_raman, nm_to_eV
 
 # =========================================================
@@ -24,6 +26,13 @@ def read_qt_int(r):
         raise ValueError
     v = struct.unpack(">i", r.data[r.pos:r.pos+4])[0]
     r.pos += 4
+    return v
+
+def read_qt_int64(r):
+    if r.remaining() < 8:
+        raise ValueError
+    v = struct.unpack(">q", r.data[r.pos:r.pos+8])[0]
+    r.pos += 8
     return v
 
 def read_qt_double(r):
@@ -139,6 +148,25 @@ def read_aist_raster(r):
         }
     }
 
+    data = result["data"]
+    left, right, bottom, top = result["extent"]
+
+    fig, ax = plt.subplots()
+
+    im = ax.imshow(
+        data,
+        extent=(left, right, bottom, top),
+        origin="lower",
+        aspect="auto"
+    )
+
+    fig.colorbar(im, ax=ax, label=result["units"]["z"])
+
+    ax.set_xlabel(result["units"]["x"])
+    ax.set_ylabel(result["units"]["y"])
+
+    plt.show()
+
     # MASK (opcional)
     try:
         mask_data = read_qt_byte_array(r)
@@ -242,6 +270,185 @@ def read_aist_spectro(r):
         }
     }
 
+def read_aist_curvemap(r):
+    spectra = read_qt_byte_array(r, dtype="<f4", uncompressed=False)
+    common_spec = read_aist_common_spectro(r)
+
+    _ = read_qt_int(r)
+    _ = read_qt_int(r)
+
+    laser = read_qt_double(r)
+    _ = read_qt_double(r)
+    _ = read_qt_double(r)
+    _ = read_qt_int(r)
+    _ = read_qt_int(r)
+
+    nchan = read_qt_int(r)
+    q_vec = read_qt_byte_array(r, dtype="<f4")
+
+    common = read_aist_common(r)
+
+    xres = read_qt_int(r)
+    yres = read_qt_int(r)
+
+    left = read_qt_double(r)
+    right = read_qt_double(r)
+
+    bottom = read_qt_double(r)
+    top = read_qt_double(r)
+
+    xunits = read_qt_string(r)
+    yunits = read_qt_string(r)
+
+    _ = read_qt_int(r)
+    nspec = read_qt_int(r)
+
+    spectra = spectra.reshape(nspec, nchan)
+
+    r.pos += 131072
+    r.pos += 52
+    read_aist_raster(r)
+    r.pos += 12
+    common = read_aist_common_spectro(r)
+    _ = read_qt_int(r)
+    name = read_qt_string(r)
+    desc = read_qt_string(r)
+    qscan = read_qt_string(r)
+
+    _ = read_qt_byte(r)
+    date_time = read_qt_string(r)
+    date_time_desc = read_qt_string(r)
+    date_time_value = read_qt_string(r)
+
+    _ = read_qt_byte(r)
+    soft_version = read_qt_string(r)
+    soft_version_desc = read_qt_string(r)
+    soft_version_value = read_qt_string(r)
+
+    _ = read_qt_byte(r)
+    lua_setting1 = read_qt_string(r)
+    lua_setting1_desc = read_qt_string(r)
+    lua_setting1_value = read_qt_string(r)
+
+    _ = read_qt_byte(r)
+    ptsXY = read_qt_string(r)
+    ptsXY_desc = read_qt_string(r)
+    ptsXY_value = read_qt_string(r)
+
+    _ = read_qt_byte(r)
+    scandir = read_qt_string(r)
+    scandir_desc = read_qt_string(r)
+    scandir_value = read_qt_string(r)
+
+    _ = read_qt_byte(r)
+    period = read_qt_string(r)
+    period_desc = read_qt_string(r)
+    period_value = read_qt_string(r)
+
+    _ = read_qt_byte(r)
+    fbIn = read_qt_string(r)
+    fbIn_desc = read_qt_string(r)
+    fbIn_value = read_qt_string(r)
+
+    _ = read_qt_byte(r)
+    setpoint = read_qt_string(r)
+    sp = read_qt_string(r)
+    sp_value = read_qt_string(r)
+
+    _ = read_qt_byte(r)
+    fbEnabled = read_qt_string(r)
+    fben = read_qt_string(r)
+    fbon = read_qt_string(r)
+
+    _ = read_qt_byte(r)
+    fbIn = read_qt_string(r)
+    fbIn_desc = read_qt_string(r)
+    fbIn_value = read_qt_string(r)
+
+    _ = read_qt_byte(r)
+    fbIn = read_qt_string(r)
+    fbIn_desc = read_qt_string(r)
+    fbIn_value = read_qt_string(r)
+
+    _ = read_qt_byte(r)
+    fbIn = read_qt_string(r)
+    fbIn_desc = read_qt_string(r)
+    fbIn_value = read_qt_string(r)
+
+    _ = read_qt_byte(r)
+    fbIn = read_qt_string(r)
+    fbIn_desc = read_qt_string(r)
+    fbIn_value = read_qt_string(r)
+
+    string = read_qt_byte(r)
+    _ = read_qt_int(r)
+    _ = read_qt_int(r)
+    _ = read_qt_double(r)
+    _ = read_qt_double(r)
+    _ = read_qt_double(r)
+    _ = read_qt_double(r)
+
+    _ = read_qt_int(r)
+    _ = read_qt_double(r)
+    _ = read_qt_double(r)
+    _ = read_qt_double(r)
+    _ = read_qt_double(r)
+    _ = read_qt_int(r)
+
+    _ = read_qt_double(r)
+    _ = read_qt_double(r)
+    _ = read_qt_double(r)
+    _ = read_qt_double(r)
+    _ = read_qt_double(r)
+    _ = read_qt_double(r)
+    _ = read_qt_double(r)
+    _ = read_qt_double(r)
+    _ = read_qt_double(r)
+    _ = read_qt_double(r)
+    _ = read_qt_double(r)
+    _ = read_qt_double(r)
+
+    _ = read_qt_int(r)
+    _ = read_qt_int(r)
+    _ = read_qt_int(r)
+    _ = read_qt_int(r)
+    _ = read_qt_int(r)
+    _ = read_qt_int(r)
+    _ = read_qt_int(r)
+
+    _ = read_qt_byte(r)
+    _ = read_qt_double(r)
+    _ = read_qt_double(r)
+    _ = read_qt_double(r)
+    _ = read_qt_double(r)
+
+    _ = read_qt_double(r)
+    _ = read_qt_double(r)
+    _ = read_qt_int(r)
+    _ = read_qt_int(r)
+    _ = read_qt_int(r)
+
+    for i in range(100):
+        for j in range(100):
+            a = read_qt_int(r)
+            b = read_qt_int(r)
+
+    return {
+        "type": "spectro",
+        "common": common_spec,
+        "laser": laser,
+        "spectra": spectra,
+        "xdata": q_vec,
+        "xres": 100,
+        "yres": 100,
+        "extent": (left, right, bottom, top),
+        "units": {
+            "x": extract_units(xunits),
+            "y": extract_units(yunits),
+            "z": "nm",
+        }
+    }
+
 # =========================================================
 # DATA NODE
 # =========================================================
@@ -250,14 +457,18 @@ READERS = {
     "raster": read_aist_raster,
     "curve": read_aist_curve,
     "spectro": read_aist_spectro,
+    "curveMap": read_aist_curvemap
 }
 
 def read_aist_data(r):
     type_ = read_qt_string(r)
     
     if type_ == 'spectro': return read_aist_spectro(r), type_
-    length = read_qt_int(r)
+    if type_ == 'curveMap':
+        results = read_aist_curvemap(r)
+        return results, type_
 
+    length = read_qt_int(r)
     if r.remaining() < length:
         raise ValueError
 
@@ -267,7 +478,7 @@ def read_aist_data(r):
     reader = READERS.get(type_)
 
     if reader is None:
-        return None
+        return None, type_
 
     return reader(sub), type_
 
@@ -282,8 +493,9 @@ def read_aist_tree(r, results):
         data, type_ = read_aist_data(r)
         if data: results.append(data)
 
-    if type_ == 'spectro': return results
-    name = read_qt_string(r)     
+    if type_ == 'spectro' or type_ == 'curveMap': return results
+
+    name = read_qt_string(r)
     nchildren = read_qt_int(r)
     for _ in range(nchildren):
         read_aist_tree(r, results)
@@ -314,6 +526,7 @@ def load(file_list, fileclass):
     channels = {}
     N = None
     mida = None
+    laser = None
 
     for d in data:
         if N is None:
@@ -324,7 +537,6 @@ def load(file_list, fileclass):
         match d["type"]:
             case "raster":
                 name = d['common']['name']
-                laser = None
                 if name == 'CPD': continue
                 if name.endswith('[2]') and name != 'CPD[2]': continue
 
@@ -339,8 +551,9 @@ def load(file_list, fileclass):
 
                 spectra = d['spectra'].reshape(N[1], N[0], d['spectra'].shape[1]).copy()
                 laser = d['laser']
-                channels['Spectra'] = ChannelData(name = 'Spectra', units = d['units']['z'], lims = None, xdata = xdata, spectra = spectra)
+                spectra = SpecData(xdata = xdata, ydata = spectra, units = d['units']['z'])
+                channels['Spectra'] = ChannelData(name = 'Spectra', units = 'cts', lims = None, spectra = spectra)
 
-    data = {'channel': channels, 'geometry': Geometry(N, mida), 'objects': ObjectData(), 'laser': laser}
+    data = {'channel': channels, 'geometry': Geometry(N, mida), 'objects': ObjectData(laser = laser)}
 
     return fileclass(**data)

@@ -44,12 +44,13 @@ class Widget:
         self.value = TYPE_MAP[self.var_type](frame, value=self.init)
         self.widget = WIDGET_MAP[self.widget_type](self._func, frame, set_value=self.value, **self.widget_kwargs)
 
-        self.widget.grid(row=row, column=col + 1, padx=5, pady=2, sticky='nw')
-
         if self.text:
             label = Label(frame, text=self.text, font=('Helvetica', 9, 'bold'), bg='#2b2b2b', fg='white')
             label.grid(row=row, column=col, padx=5, pady=2, sticky='nw')
             self.label = label  # afegim el label com a atribut del widget
+            col = col + 1
+
+        self.widget.grid(row=row, column=col, padx=5, pady=2, sticky='nw')
 
     def set(self, value):
         self.value.set(value)
@@ -206,11 +207,11 @@ def add_colorcombobox(func, frame, set_value=None, colors=None, cols=8):
         popup.focus_set()
 
     try:
-        set_value = mcolors.to_hex(set_value.get())
+        value = mcolors.to_hex(set_value.get())
     except Exception:
-        set_value = colors[0]
+        value = colors[0]
 
-    main_btn = Button(frame, bg=set_value, width=4, relief="raised", command = open_palette)
+    main_btn = Button(frame, bg=value, width=4, relief="raised", command = open_palette)
     main_btn.value = set_value
 
     return main_btn

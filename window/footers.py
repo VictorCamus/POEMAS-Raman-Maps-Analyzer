@@ -42,16 +42,13 @@ class ViewFooterMap:
         return self.controller.channel
 
     def _create_widgets(self): # Afegeix controls per canviar el color del mapa i de l'escala.
-        if self.channel.name == 'Spectra': units = self.channel.spec_units
-        else: units = self.channel.units
-
         self.widgets = {
             'track_x': Widget(key='track_x', var_type=str,
-                       text="X:", widget='entry', widget_kwargs={"state": 'readonly'}),
+                       text="X", widget='entry', widget_kwargs={"state": 'readonly', "width": 10}),
             'track_y': Widget(key='track_y', var_type=str,
-                       text="Y:", widget='entry', widget_kwargs={"state": 'readonly'}),
-            'track_z': Widget(key='track_z', var_type=str, text=f"{self.channel.name} ({units}):",
-                       widget='entry', widget_kwargs={"state": 'readonly'})}
+                       text="Y", widget='entry', widget_kwargs={"state": 'readonly', "width": 10}),
+            'track_z': Widget(key='track_z', var_type=str,
+                       text=f"{self.channel.name} ({self.channel.units})", widget='entry', widget_kwargs={"state": 'readonly', "width": 10})}
 
         for i, widget in enumerate(self.widgets.values()): widget.add(self.frame, row = 0, col = 2*i + 1)
 
@@ -94,8 +91,8 @@ class ViewFooterSpec:
     def _create_widgets(self): # Afegeix controls per canviar el color del mapa i de l'escala.
         self.widgets = {
             'track_x': Widget(key='track_x', var_type=str,
-                              text=f"λ (nm):", widget='entry', widget_kwargs={"state": 'readonly'}),
+                              text=self.controller.spec.xlabels[self.channel.spectra.units], widget='entry', widget_kwargs={"state": 'readonly', "width": 10}),
             'track_y': Widget(key='track_y', var_type=str,
-                              text="Intensity (cts):", widget='entry', widget_kwargs={"state": 'readonly'})}
+                              text="Intensity (cts)", widget='entry', widget_kwargs={"state": 'readonly', "width": 10})}
 
         for i, widget in enumerate(self.widgets.values()): widget.add(self.frame, row = 0, col = 2*i + 1)

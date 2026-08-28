@@ -43,8 +43,8 @@ def set_lims(name, z):
         vmin = 0
 
     # 4. Truncament de valors
-    vmin = truncar_significatives(vmin, 2, cap_a='avall')
-    vmax = truncar_significatives(vmax, 2, cap_a='amunt')
+    vmin = truncar_significatives(vmin, 3, cap_a='avall')
+    vmax = truncar_significatives(vmax, 3, cap_a='amunt')
 
     # 5. Correcció per evitar límits idèntics
     if vmin == vmax:

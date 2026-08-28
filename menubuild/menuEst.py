@@ -83,7 +83,7 @@ class Histogrames(BaseFigureWindow):
     
     def actualitza_plot(self):
         color = self.widgets['cb_color'].value.get()
-        
+
         match self.mode:
             case "Hist": self.plot, self.hist_data, _ = hist(self.axis, self.data, self.lims, xlabel=self.channel.ax_title, color=color)
             case "Box": self.plot = boxplot(self.axis, self.data, self.lims, name=self.channel.name, ylabel=self.channel.ax_title, color=color)
@@ -135,6 +135,8 @@ class Histogrames(BaseFigureWindow):
     def compute_stats(self):
         x0, x1, y0, y1 = self.file.geometry.limit_pixels()
         data = self.channel.Z[y0:y1, x0:x1].ravel()
+        data = data[np.isfinite(data)]
+
         mean = data.mean()
         std = data.std()
 
@@ -305,11 +307,11 @@ class DirectionMean(BaseFigureWindow):
 
             if self._direction:
                 Npixels = N[0]; xlength = file.geometry.midaBase[0]
-                for a in range(Npixels): self.mean = np.append(self.mean, np.mean(z[0:,a]))
+                for a in range(Npixels): self.mean = np.append(self.mean, np.nanmean(z[0:,a]))
 
             else:
                 Npixels = N[1]; xlength = file.geometry.midaBase[1]
-                for a in range(Npixels): self.mean = np.append(self.mean, np.mean(z[a,0:]))
+                for a in range(Npixels): self.mean = np.append(self.mean, np.nanmean(z[a,0:]))
 
             if len(self.xval) == 0: start = 0
             else: start = self.xval[-1]
@@ -319,7 +321,7 @@ class DirectionMean(BaseFigureWindow):
                 interval = 1/self._freq * 1/60 # Expressat en minuts. El nombre de línies és la meitat de la freqüència, ja que l'AIST fa dues passades en KPFM.
                 self.xval = np.append(self.xval, np.linspace(start, Npixels*interval+start, Npixels))
 
-        self.lims = (self.mean.min(), self.mean.max())
+        self.lims = (np.nanmin(self.mean), np.nanmax(self.mean))
     
     def update_plot(self):
         self.axis.set_xlim(self.xval.min(), self.xval.max())

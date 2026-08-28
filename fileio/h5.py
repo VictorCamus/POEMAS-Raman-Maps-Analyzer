@@ -38,6 +38,9 @@ def read_object(group, fileclass):
 
                 data[name] = {key_type(key): read_object(obj[key], value_type) for key in keys}
 
+            elif annotation is slice:
+                data[name] = slice(to_python(obj.attrs.get("start")), to_python(obj.attrs.get("stop")), to_python(obj.attrs.get("step")))
+
             else: data[name] = read_object(obj, annotation) # Crea
 
     return fileclass(**data)
@@ -57,21 +60,37 @@ def save_session(filename, files):
 def save_object(group, obj):
     for name in type(obj).__annotations__:
         value = getattr(obj, name)
-        if value is None: continue
+        save_value(group, name, value)
 
-        if is_dataclass(value): # Si és una classe, reitera la funció
-            save_object(group.create_group(name), value)
+def save_value(group, name, value):
 
-        elif isinstance(value, dict): # Si és un diccionari, crea un subgrup i un data-set per a cada entrada del diccionari.
-            sub_dict = group.create_group(name)
-            sub_dict.attrs["order"] = list(map(str, value.keys()))
+    if value is None:
+        return
 
-            for key, data in value.items():
-                key = str(key)
-                if is_dataclass(data): save_object(sub_dict.create_group(key), data)
-                else: sub_dict.create_dataset(key, data=data)
+    if is_dataclass(value):
+        save_object(group.create_group(name), value)
 
-        elif isinstance(value, np.ndarray): # Si és un np.array.
-            group.create_dataset(name, data=value)
+    elif isinstance(value, dict):
+        sub_dict = group.create_group(name)
+        sub_dict.attrs["order"] = np.array(list(map(str, value.keys())), dtype=h5py.string_dtype())
 
-        else: group.attrs[name] = value # Si és un string, booleà o qualsevol variable que no siga un array.
+        for key, val in value.items():
+            save_value(sub_dict, str(key), val)
+
+    elif isinstance(value, np.ndarray):
+        group.create_dataset(name, data=value)
+
+    elif isinstance(value, slice):
+        slice_group = group.create_group(name)
+
+        if value.start is not None:
+            slice_group.attrs["start"] = value.start
+
+        if value.stop is not None:
+            slice_group.attrs["stop"] = value.stop
+
+        if value.step is not None:
+            slice_group.attrs["step"] = value.step
+
+    else:
+        group.attrs[name] = value

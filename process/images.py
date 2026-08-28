@@ -1,5 +1,6 @@
 import io
-from win32 import win32clipboard
+import sys
+import subprocess
 
 def zoom(event, old_lims, midaBase, base_scale=1.1):
     xdata, ydata = event.xdata, event.ydata
@@ -23,6 +24,26 @@ def zoom(event, old_lims, midaBase, base_scale=1.1):
 
     return xlim, ylim
 
+def rotate(data, N, rotation = 0, flip = False):
+    Nx, Ny = N
+
+    single = isinstance(data, tuple) and len(data) == 2
+    if single: data = [data]
+
+    transformed = []
+    for x, y in data:
+        match rotation:
+            case 0: pass
+            case 1: x, y = y, Ny - 1 - x
+            case 2: x, y = Nx - 1 - x, Ny - 1 - y
+            case 3: x, y = Nx - 1 - y, x
+
+        if flip: x = Nx - 1 - x
+
+        transformed.append((x, y))
+
+    return transformed[0] if single else transformed
+
 def on_motion(event, old_lims, midaBase, press):
     xlim, ylim = old_lims
     dx = event.xdata - press[0]
@@ -40,14 +61,25 @@ def on_motion(event, old_lims, midaBase, press):
 
 def copy_figure(figure):
     buffer = io.BytesIO()
-    figure.savefig(buffer, format='png', bbox_inches='tight', transparent=True)
+    figure.savefig(buffer, format="png", bbox_inches="tight", transparent=True)
 
-    # Obrir amb PIL
+    if sys.platform == "win32": _copy_figure_windows(buffer)
+    elif sys.platform.startswith("linux"): _copy_figure_linux(buffer)
+    else: raise NotImplementedError(f"Clipboard d'imatges no implementat per a {sys.platform}")
+
+def _copy_figure_windows(buffer):
+    from win32 import win32clipboard
+
     png_data = buffer.getvalue()
 
     CF_PNG = win32clipboard.RegisterClipboardFormat("PNG")
 
     win32clipboard.OpenClipboard()
-    win32clipboard.EmptyClipboard()
-    win32clipboard.SetClipboardData(CF_PNG, png_data)
-    win32clipboard.CloseClipboard()
+    try:
+        win32clipboard.EmptyClipboard()
+        win32clipboard.SetClipboardData(CF_PNG, png_data)
+    finally:
+        win32clipboard.CloseClipboard()
+
+def _copy_figure_linux(buffer):
+    subprocess.run(["wl-copy", "--type", "image/png"], input=buffer.getvalue(), check=True)

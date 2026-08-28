@@ -1,5 +1,5 @@
 from .file import FileData, Geometry, ObjectData
-from .channel import ChannelData
-from .views import MapView
+from .channel import ChannelData, SpecData
+from .views import MapView, SpecView
 
-__all__ = ["FileData", "ChannelData", "Geometry", "MapView", "ObjectData"]
+__all__ = ["FileData", "Geometry", "ObjectData", "ChannelData", "SpecData", "MapView", "SpecView"]

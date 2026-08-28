@@ -140,10 +140,11 @@ class BaseWindow:
     def _init_figure(main_frame, figure):
         frame = Frame(main_frame)
         frame.pack(side='right', fill="both", expand=True)
-        frame.bind("<Control-c>", lambda e: copy_figure(figure))
 
         canvas = FigureCanvasTkAgg(figure, master=frame)
         canvas.get_tk_widget().pack(fill="both", expand=True)
+        canvas.mpl_connect("key_press_event", lambda event: (copy_figure(figure) if event.key == "ctrl+c" else None))
+
         canvas.draw()
 
         return frame, canvas
@@ -198,7 +199,7 @@ class BaseMapWindow(BaseWindow):
         self.cbar.limInf.set_color(ch.color.limInf)
         self.cbar.limSup.set_color(ch.color.limSup)
 
-        map.update_map(self.image, ch.color.cmap, ch.Z, ch.lims, ch.units, mida = self.file.geometry.midaBase, colLims = ch.color.lims, cbar = self.cbar)
+        map.update_map(self.image, ch.color.cmap, ch.Z, ch.lims, self.units, mida = self.file.geometry.midaBase, colLims = ch.color.lims, cbar = self.cbar)
         self.escala.color = ch.color.scale
         self.image.set_clim(ch.lims)
         self.canvas.draw_idle()

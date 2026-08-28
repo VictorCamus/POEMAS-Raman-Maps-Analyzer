@@ -34,13 +34,13 @@ FuncParams = {
 }
 
 DEFAULT_PARAMS = {
-    'x0':    {'value': 0.0,   'min': -np.inf, 'max': np.inf, 'color': 'viridis', 'dim': 1},
-    'FWHM':  {'value': 5.0,   'min': 0.0,     'max': np.inf, 'color': 'cividis', 'dim': 1},
-    'sigma': {'value': 5.0,   'min': 0.0,     'max': np.inf, 'color': 'inferno', 'dim': 1},
-    'gamma': {'value': 1.0,   'min': 0.0,     'max': np.inf, 'color': 'inferno', 'dim': 1},
-    'A':     {'value': 100.0, 'min': 0.0,     'max': np.inf, 'color': 'hot',   'dim': 0},
-    'tau':   {'value': 1.0,   'min': 0.0,     'max': np.inf, 'color': 'Reds',    'dim': 1},
-    'C':     {'value': 0.0,   'min': -np.inf, 'max': np.inf, 'color': 'gray',   'dim': 0}
+    'x0':    {'value': 0.0,   'min': -np.inf, 'max': np.inf, 'vary': True, 'color': 'viridis', 'dim': 1},
+    'FWHM':  {'value': 5.0,   'min': 0.0,     'max': np.inf, 'vary': True, 'color': 'cividis', 'dim': 1},
+    'sigma': {'value': 5.0,   'min': 0.0,     'max': np.inf, 'vary': True, 'color': 'inferno', 'dim': 1},
+    'gamma': {'value': 1.0,   'min': 0.0,     'max': np.inf, 'vary': True, 'color': 'inferno', 'dim': 1},
+    'A':     {'value': 100.0, 'min': 0.0,     'max': np.inf, 'vary': True, 'color': 'hot',     'dim': 0},
+    'tau':   {'value': 1.0,   'min': 0.0,     'max': np.inf, 'vary': True, 'color': 'Reds',    'dim': 1},
+    'C':     {'value': 0.0,   'min': -np.inf, 'max': np.inf, 'vary': True, 'color': 'gray',    'dim': 0}
 }
 
 def get_units(dim, units):

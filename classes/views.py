@@ -10,7 +10,6 @@ from drawing.plots import base_plot
 from process import images as zoom
 from window.headers import HeaderMap, HeaderSpec
 from window.footers import FooterMap, FooterSpec
-from numpy import nanmax
 
 class FigureView(ABC):
     def __init__(self, model, column: int = 0):
@@ -99,10 +98,7 @@ class MapView(FigureView):
     def refresh_map(self, ch=None):
         if not ch: ch = self.channel
 
-        if ch.name == 'Spectra': units = ch.spec_units
-        else: units = ch.units
-
-        mapdraw.update_map(self.image, ch.color.cmap, ch.Z, ch.lims, units, mida=self.geometry.midaBase,
+        mapdraw.update_map(self.image, ch.color.cmap, ch.Z, ch.lims, ch.units, mida=self.geometry.midaBase,
                        colLims=ch.color.lims, cbar=self.cbar)
         self.escala.color = ch.color.scale
         self.image.set_clim(*ch.lims)
@@ -118,11 +114,29 @@ class MapView(FigureView):
 class SpecView(FigureView):
 
     @property
-    def units(self):
-        return self.header.view.widgets['units'].get()
+    def xdata(self):
+        return self.channel.spectra.x
+
+    @property
+    def bkg(self):
+        spec = self.channel.spectra
+        fit_key = self.header.view.fit_key
+
+        bkg = spec.bkg.copy()
+
+        if fit_key != 'rawdata':
+            fit = spec.fits[fit_key]
+            xfit = spec.x[fit.xrange]
+
+            for i, (name, peak) in enumerate(fit.peaks.items()):
+                if peak.bkg: bkg[fit.xrange] += peak.func(xfit, *(param[spec.coords] for param in peak.params.values()))
+
+        return bkg
 
     def _create_plot(self):
-        self.figure, self.axis = base_plot(xtitle = self.header.xlabels[self.channel.units], ytitle = 'Intensity (cts)')
+        self.xlabels = {'nm': 'λ (nm)', 'eV': 'E (eV)', '1/cm': r'Raman Shift (cm⁻¹)'}
+
+        self.figure, self.axis = base_plot(xtitle = self.xlabels[self.channel.spectra.units], ytitle = 'Intensity (cts)')
         self.figure.subplots_adjust(left=0.2, right=0.95, bottom=0.2, top=0.8)
 
     def _create_header(self):
@@ -132,45 +146,34 @@ class SpecView(FigureView):
         self.footer = FooterSpec(self)
 
     def _create_objects(self):
-        ch = self.channel
-        view = self.header.view
+        spec = self.channel.spectra
 
-        units = view.widgets['units'].get()
-        xdata = ch.xdata[units]
-        ydata = np.full(xdata.shape, np.nan)
-
-        self.line, = self.axis.plot(xdata, ydata, color="b")
-        self.bkgline, = self.axis.plot(xdata, ydata, color="tab:blue")
+        self.line, = self.axis.plot(spec.x, spec.y, color="b")
+        self.bkgline, = self.axis.plot(spec.x, spec.bkg, color="tab:blue")
         self.fitline = {}
-        self.axis.set_xlim(view.widgets["left"].get(), view.widgets["right"].get())
+
+        self.axis.set_title(f"X={spec.coords[1] + 1} Y={spec.coords[0] + 1}", fontsize=16, pad=10)
+        self.axis.set_xlim(spec.lims)
         self.axis.set_ylim(bottom=0)
 
     def _connect(self):
         self.canvas.mpl_connect("key_press_event", lambda e: zoom.copy_figure(self.figure) if e.key == "ctrl+c" else None)
 
     def plot_pixel(self, px, py):
-        self.coords = py, px
+        self.channel.spectra.coords = py, px
         self.axis.set_title(f"X={px + 1} Y={py + 1}", fontsize=16, pad=10)
 
         self.plot_data()
 
     def plot_data(self):
         colors = list(TABLEAU_COLORS.values())
-        ch = self.channel
-        spec = ch.spectra[*self.coords]
-        bkg = ch.spec_bkg[*self.coords]
+        spec = self.channel.spectra
         view = self.header.view
 
-        units = view.widgets['units'].get()
-        xdata = ch.xdata[units]
-
-        if view.widgets["bkg"].get(): ydata = spec
+        if view.widgets["bkg"].get(): ydata = spec.y
         else:
-            ydata = spec - bkg
+            ydata = spec.y - self.bkg
             ydata[ydata < 0] = 0
-
-        self.line.set_ydata(ydata)
-        self.bkgline.set_ydata(bkg)
 
         ytotal = 0
         fit_key = self.header.view.fit_key
@@ -180,28 +183,28 @@ class SpecView(FigureView):
             self.fitline = {}
 
         if fit_key != 'rawdata':
-            fit = self.channel.fits[fit_key]
+            fit = spec.fits[fit_key]
+            xfit = spec.x[fit.xrange]
+            bkg = self.bkg[fit.xrange]
+
             for i, (name, peak) in enumerate(fit.peaks.items()):
-                ydata = peak.func(xdata, *(param[self.coords] for param in peak.params.values()))
-                self.fitline[name] = self.axis.fill_between(xdata, ydata, 0, color=colors[i + 1], alpha=0.6)
-                ytotal += ydata
+                if not peak.bkg:
+                    yfit = peak.func(xfit, *(param[spec.coords] for param in peak.params.values()))
+                    ytotal += yfit
 
-            if self.header.view.widgets["bkg"].get(): ytotal += bkg
-            self.fitline['All'], = self.axis.plot(xdata, ytotal, color = 'k')
+                    if self.header.view.widgets['bkg'].get():
+                        yfit += bkg
+                        self.fitline[name] = self.axis.fill_between(xfit, yfit, bkg, color=colors[i + 1], alpha=0.6)
+                    else: self.fitline[name] = self.axis.fill_between(xfit, yfit, 0, color=colors[i + 1], alpha=0.6)
 
-        top = int(1.1*nanmax(spec))
+            if self.header.view.widgets['bkg'].get(): ytotal += bkg
+            self.fitline['All'], = self.axis.plot(xfit, ytotal, color = 'k')
+
+        self.line.set_ydata(ydata)
+        self.bkgline.set_ydata(self.bkg)
+
+        top = int(1.1*np.nanmax(ydata[spec.xrange]))
         self.axis.set_ylim(top = top)
         view.widgets["top"].set(top)
 
-        self.canvas.draw_idle()
-
-    def update_peak(self, name, xdata, ydata):
-        if self.header.view.widgets['bkg'].get():
-            bkg = self.channel.spec_bkg[*self.coords]
-            ydata = ydata + bkg
-        else:
-            bkg = np.zeros_like(ydata)
-
-        verts = np.column_stack([np.r_[xdata, xdata[::-1]], np.r_[ydata, bkg[::-1]]])
-        self.fitline[name].set_verts([verts])
         self.canvas.draw_idle()

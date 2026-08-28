@@ -15,39 +15,32 @@ class GestorEspectre(BaseMenu):  # Classe que gestiona les accions relacionades 
 
     def registrar_menu(self, menu):
         accions = [
-            ('Calcular fons', lambda: self._background()),
+            ('Calcular fons', lambda: Fons(self)),
             ('Afegir llindar', lambda: Llindar(self)),
             ('Fer ajust', lambda: FitSpec(self)),
-            ('Guardar espectre', lambda: self._guardar()),
+            ('Guardar espectre', self._guardar),
         ]
         
         self.create_menu("Espectre", menu, accions)  # Crida a la funció comuna d'afegir menú
 
-    def _background(self):
-        if not hasattr(self.current_file.view.spectrum, 'coords'):
-            messagebox.showerror("Espectre", "No hi ha cap espectre dibuixat.")
-            return
-
-        Fons(self)
-
     def _guardar(self): # Guarda els perfils dibuixats en fitxers de perfil.
         spec = self.current_file.view.spectrum
 
-        if not hasattr(spec, 'coords'):
-            messagebox.showerror("Espectre", "No hi ha cap espectre dibuixat.")
-            return
-
-        posy, posx = spec.coords
         folder = self.current_file.folder
         channel = self.current_file.current_channel
-        units = spec.header.view.widgets['units'].get()
+        posy, posx = channel.spectra.coords
+
         ruta = folder / 'Spectra'
         ruta.mkdir(parents=True, exist_ok=True)
         nom = ruta / f'{folder.stem}_{posx}_{posy}'
-        np.savetxt(f'{nom}.txt',
-                   np.c_[channel.xdata[units], channel.spectra[*spec.coords], channel.spec_bkg[*spec.coords]],
-                   header = '\t'.join([f'Xdata ({units})', 'I (cts)', 'Bkg (cts)']),
-                   delimiter='\t', fmt=['%.4f', '%d', '%.2f'])
+
+        header = '\t'.join([
+            f'{"Xdata (" + channel.spectra.units + ")":>12}',
+            f'{"I (cts)":>12}',
+            f'{"Bkg (cts)":>12}'
+        ])
+        np.savetxt(f'{nom}.txt', np.c_[channel.spectra.x, channel.spectra.y, channel.spectra.bkg],
+            header=header, delimiter='\t', fmt='%12.4f\t%12.2f\t%12.2f')
 
         spec.figure.savefig(f'{nom}.png', bbox_inches = 'tight')
         # pos = posy - 1, posx - 1
@@ -78,39 +71,49 @@ class Fons(BaseWindow):
         super().__init__(gestor, "Calcular fons")
 
         self.spec = self.file.view.spectrum
-        self.ydata = self.channel.spectra[*self.spec.coords]
-        self.xmask = np.isfinite(self.ydata)
+        self.bkg = np.full(self.spec.xdata.shape, np.nan)
 
-        self.bkg = np.full(self.ydata.shape, np.nan)
+    @property
+    def xdata(self):
+        return self.channel.spectra.x
 
-        self.baseline = Baseline(x_data=self.channel.xdata[self.spec.header.view.widgets['units'].get()][self.xmask])
+    @property
+    def ydata(self):
+        return self.channel.spectra.y[self.xrange]
+
+    @property
+    def xrange(self):
+        return self.channel.spectra.xrange
+
+    @property
+    def baseline(self):
+        return Baseline(x_data=self.xdata[self.xrange])
 
     def plot_bkg(self, value):
         self.widgets["percentile"].config(state = 'disabled')
         self.widgets["spline"].config(state='disabled')
-        self.bkg = np.full(self.ydata.shape, np.nan)
+        self.bkg = np.full(self.xdata.shape, np.nan)
 
-        self.ydata = self.channel.spectra[*self.spec.coords]
         match value:
             case 'nan': pass
             case 'percentile':
                 self.widgets["percentile"].config(state='normal')
                 bkg_value = np.nanpercentile(self.ydata, self.widgets["percentile"].get())
-                self.bkg[self.xmask] = bkg_value
 
             case 'spline':
-                self.widgets["spline"].config(state='normal')
-                bkg_value, _ = self.baseline.mixture_model(self.ydata[self.xmask], lam = 10 ** self.widgets["spline"].get())
-                self.bkg[self.xmask] = bkg_value
 
+                self.widgets["spline"].config(state='normal')
+                bkg_value, _ = self.baseline.mixture_model(self.ydata, lam = 10 ** self.widgets["spline"].get())
+
+        self.bkg[self.xrange] = bkg_value
         self.spec.bkgline.set_ydata(self.bkg)
         self.spec.canvas.draw_idle()
 
     def percentile(self, value):
         bkg_value = np.nanpercentile(self.ydata, value)
 
-        self.bkg = np.full(self.ydata.shape, np.nan)
-        self.bkg[self.xmask] = bkg_value
+        self.bkg = np.full(self.xdata.shape, np.nan)
+        self.bkg[self.xrange] = bkg_value
 
         self.spec.bkgline.set_ydata(self.bkg)
         self.spec.canvas.draw_idle()
@@ -118,10 +121,10 @@ class Fons(BaseWindow):
         return
 
     def spline(self, value):
-        bkg_value, _ = self.baseline.mixture_model(self.ydata[self.xmask], lam = 10 ** value)
+        bkg_value, _ = self.baseline.mixture_model(self.ydata, lam = 10 ** value)
 
-        self.bkg = np.full(self.ydata.shape, np.nan)
-        self.bkg[self.xmask] = bkg_value
+        self.bkg = np.full(self.xdata.shape, np.nan)
+        self.bkg[self.xrange] = bkg_value
 
         self.spec.bkgline.set_ydata(self.bkg)
         self.spec.canvas.draw_idle()
@@ -130,25 +133,27 @@ class Fons(BaseWindow):
 
     def apply_bkg(self, value):
         bkg_class = self.widgets["bkg"].get()
-        if bkg_class == 'nan': return
+        if bkg_class == 'nan':
+            self.channel.spectra.bkgdata = np.full_like(self.channel.spectra.ydata, 0)
+            return
 
         if self.widgets["map_bkg"].get() == 'one':
             N = self.file.geometry.N
-            self.channel.spec_bkg = np.tile(self.bkg, (N[1], N[0], 1))
+            self.channel.spectra.bkgdata = np.tile(self.bkg, (N[1], N[0], 1))
         else:
-            spec = self.channel.spectra
+            spec = self.channel.spectra.ydata
             for i in range(spec.shape[0]):
                 for j in range(spec.shape[1]):
-                    spectrum = spec[i, j, :]
-                    bkg = np.full(self.ydata.shape, np.nan)
+                    spectrum = spec[i, j, :][self.xrange]
+                    bkg = np.full(self.xdata.shape, np.nan)
 
                     if bkg_class == 'percentile':
                         bkg_value = np.nanpercentile(spectrum, self.widgets["percentile"].get())
                     elif bkg_class == 'spline':
-                        bkg_value, _ = self.baseline.mixture_model(spectrum[self.xmask])
+                        bkg_value, _ = self.baseline.mixture_model(spectrum)
 
-                    bkg[self.xmask] = bkg_value
-                    self.channel.spec_bkg[i, j, :] = bkg
+                    bkg[self.xrange] = bkg_value
+                    self.channel.spectra.bkgdata[i, j, :] = bkg
 
     def _create_widgets(self):
         opts = {"Cap": 'nan',

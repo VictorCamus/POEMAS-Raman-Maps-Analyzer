@@ -1,6 +1,6 @@
 from numpy import genfromtxt, unique
 from process.converter import raman_to_nm, raman_to_eV, nm_to_raman, nm_to_eV, eV_to_raman, eV_to_nm
-from classes import ChannelData, Geometry, ObjectData
+from classes import ChannelData, Geometry, ObjectData, SpecData
 
 def load(file_list, fileclass):
     file = file_list[0]
@@ -43,7 +43,8 @@ def load(file_list, fileclass):
             xdata['eV'] = raman_to_eV(q, laser)
             xdata['1/cm'] = q
 
-    channels['Spectra'] = ChannelData(name='Spectra', units = xunits, xdata=xdata, spectra=spectra)
-    data = {'channel': channels, 'geometry': Geometry(N, mida), 'objects': ObjectData(), 'laser': laser}
+    spectra = SpecData(xdata = xdata, ydata = spectra, units = xunits)
+    channels['Spectra'] = ChannelData(name='Spectra', units = 'cts', spectra=spectra)
+    data = {'channel': channels, 'geometry': Geometry(N, mida), 'objects': ObjectData(laser = laser)}
 
     return fileclass(**data)

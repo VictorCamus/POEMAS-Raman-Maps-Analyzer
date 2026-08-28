@@ -8,6 +8,7 @@ from process.converter import pixel_to_coords
 @dataclass
 class ObjectData:
     profiles: Dict[int, ProfileData] = field(default_factory=dict)
+    laser: float = None
     mask: np.ndarray = None
 
 @dataclass
@@ -18,23 +19,6 @@ class ProfileData:
     @property
     def lims(self):
         return self.line[0], self.line[-1]
-
-    def rotate(self, N, rotation, flip):
-        Nx, Ny = N
-        transformed = []
-
-        for x, y in self.line:
-            match rotation:
-                case 0: pass
-                case 1: x, y = y, Ny - 1 - x
-                case 2: x, y = Nx - 1 - x, Ny - 1 - y
-                case 3: x, y = Nx - 1 - y, x
-
-            if flip: x = Nx - 1 - x
-
-            transformed.append((x, y))
-
-        self.line = transformed
 
 @dataclass
 class ProfilePlot:
@@ -73,7 +57,7 @@ class ProfilePlot:
         y_vals = coords[:, 1]
 
         dades = data[y_vals, x_vals]
-        zmin, zmax = dades.min(), dades.max()
+        zmin, zmax = np.nanmin(dades), np.nanmax(dades)
         diff = (zmax - zmin) / 15
         line = np.linspace(0, prof.length, len(dades))
 

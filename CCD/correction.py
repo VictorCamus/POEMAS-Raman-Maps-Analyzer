@@ -5,7 +5,7 @@ def ccd_correct(xdata, spectra):
         CCD_Data = np.loadtxt((line.replace(',', '.') for line in f), delimiter=' ', usecols=(0, 1))
 
     # spectra -= percentile(spectra, 1)
-    QE = np.interp(xdata, CCD_Data[0], CCD_Data[1], left=np.nan, right=np.nan)
+    QE = np.interp(xdata, CCD_Data[:, 0], CCD_Data[:, 1], left=np.nan, right=np.nan)
     QE[QE < 0.05] = np.nan
     spectra /= QE
     spectra[spectra < 0] = 0

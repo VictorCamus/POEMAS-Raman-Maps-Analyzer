@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Dict
 
 from classes.fits import FitResult
-from process.basics import set_lims
+from process.basics import set_lims, find_nearest
 from CCD.correction import ccd_correct
 
 @dataclass
@@ -13,26 +13,17 @@ class ChannelData:  # Crea canals per a cada tipus de mapa dins d'un fitxer.
     Z: np.ndarray | None = None
     units: str = None
     lims: NDArray[np.floating] | None = None
-    xdata: Dict[str, np.ndarray] = field(default_factory = dict)
-    spectra: np.ndarray = None
-    spec_bkg: np.ndarray = None
-    spectra_lims: list[float] = None
-    spec_units: str = None
-    fits: Dict[str, FitResult] = field(default_factory = dict)
     color: Colors = None
+    spectra: SpecData = None
 
     def __post_init__(self):
         if self.color is None: self.color = Colors(self.name)
 
-        if self.Z is None and self.spectra is not None:
-            self.spectra = ccd_correct(self.xdata['nm'], self.spectra)
-            self.spec_bkg = np.zeros_like(self.spectra)
+        if self.Z is None and self.spectra.ydata is not None:
+            self.Z = np.nansum(self.spectra.ydata, axis = 2, dtype=float)
 
-            self.Z = np.nansum(self.spectra, axis = 2, dtype=float)
-            self.spectra_lims = [round(self.xdata[self.units][0], 3), round(self.xdata[self.units][-1], 3)]
-
-        self.spec_units = 'cts'
         if self.lims is None: self.update_lims()
+
 
     @property
     def ax_title(self):
@@ -40,6 +31,40 @@ class ChannelData:  # Crea canals per a cada tipus de mapa dins d'un fitxer.
 
     def update_lims(self):
         self.lims, self.Z = set_lims(self.name, self.Z)
+
+@dataclass
+class SpecData:
+    xdata: Dict[str, np.ndarray] = field(default_factory = dict)
+    ydata: np.ndarray = None
+    bkgdata: np.ndarray = None
+    units: str = None
+    lims: list[float] = None
+    coords: tuple[int] = (0, 0)
+    fits: Dict[str, FitResult] = field(default_factory = dict)
+
+    @property
+    def x(self):
+        return self.xdata[self.units]
+
+    @property
+    def y(self):
+        return self.ydata[*self.coords]
+
+    @property
+    def bkg(self):
+        return self.bkgdata[*self.coords]
+
+    @property
+    def xrange(self):
+        left_index, right_index = sorted(find_nearest(self.x, self.lims))
+
+        return slice(left_index, right_index)
+
+    def __post_init__(self):
+        # self.spectra = ccd_correct(self.xdata, self.spectra)
+
+        if self.lims is None: self.lims = [round(self.x[0], 3), round(self.x[-1], 3)]
+        if self.bkgdata is None: self.bkgdata = np.zeros_like(self.ydata)
 
 @dataclass
 class Colors:

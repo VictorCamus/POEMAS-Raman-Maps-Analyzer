@@ -2,6 +2,7 @@ from operator import xor
 import numpy as np
 
 from .base import BaseMenu
+from process.images import rotate
 from tkinter import messagebox
 from window.builder import BaseWindow
 from window.widgets import Widget
@@ -41,14 +42,16 @@ class GestorImatges(BaseMenu): # Classe que gestiona les accions relacionades am
             if rot != 0:
                 ch.Z = np.rot90(ch.Z, k=rot)
                 if ch.spectra is not None:
-                    ch.spectra = np.rot90(ch.spectra, k=rot)
-                    ch.spec_bkg = np.rot90(ch.spec_bkg, k=rot)
+                    ch.spectra.ydata = np.rot90(ch.spectra.ydata, k=rot)
+                    ch.spectra.bkgdata = np.rot90(ch.spectra.bkgdata, k=rot)
+                    ch.spectra.coords = rotate(ch.spectra.coords, g.N, rotation = rot)
 
             if flip:
                 ch.Z = np.flip(ch.Z, axis = 1)
                 if ch.spectra is not None:
-                    ch.spectra = np.flip(ch.spectra, axis = 1)
-                    ch.spec_bkg = np.flip(ch.spec_bkg, axis=1)
+                    ch.spectra.ydata = np.flip(ch.spectra.ydata, axis = 1)
+                    ch.spectra.bkgdata = np.flip(ch.spectra.bkgdata, axis=1)
+                    ch.spectra.coords = rotate(ch.spectra.coords, g.N, flip = True)
 
         file.view.map.image.set_data(channel.Z)
         self._update_rotation(file, rot, flip)
@@ -70,7 +73,7 @@ class GestorImatges(BaseMenu): # Classe que gestiona les accions relacionades am
         map.refresh_geometry()
         map.image.set_extent([0, g.midaBase[0], 0, g.midaBase[1]])
 
-        for prof in file.objects.profiles.values(): prof.rotate(g.N, rot, flip)
+        for prof in file.objects.profiles.values(): prof.line = rotate(prof.line, g.N, rot, flip)
         map.profiles.update()
 
         if file.geometry.mida[0] != file.geometry.mida[1]: file.view.resize()

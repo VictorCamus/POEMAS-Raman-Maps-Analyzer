@@ -16,7 +16,6 @@ class FletxaBase:
 
         self.arrow = None
         self.text_obj = None
-        self.background = None  # Per blitting
 
     def dibuixa(self):
         if self.start is None or self.end is None:
@@ -50,23 +49,16 @@ class FletxaBase:
         self.dibuixa()
 
     def _actualitzar_fletxa(self):
-        if self.background is None:
-            return  # Esperem que la fletxa inicial sigui creada
-
-        canvas = self.ax.figure.canvas
-        canvas.restore_region(self.background)
-
         xp1, yp1 = self.start
         xp2, yp2 = self.end
+
         self.arrow.set_positions((xp1, yp1), (xp2, yp2))
 
         text_x, text_y, angle = self._calcular_text()
         self.text_obj.set_position((text_x, text_y))
         self.text_obj.set_rotation(angle)
 
-        self.ax.draw_artist(self.arrow)
-        self.ax.draw_artist(self.text_obj)
-        canvas.blit(self.ax.bbox)
+        self.ax.figure.canvas.draw_idle()
 
     def _calcular_text(self):
         xp1, yp1 = self.start
@@ -94,8 +86,6 @@ class FletxaBase:
 
     def _crear_fletxa(self):
         if self.start is None or self.end is None: return
-
-        self.background = self.ax.figure.canvas.copy_from_bbox(self.ax.bbox) # Guarda el background.
 
         text_x, text_y, angle = self._calcular_text()
 
@@ -126,11 +116,10 @@ class FletxaBase:
 
 class FletxaInteractiva(FletxaBase):
 
-    def __init__(self, ax, Z, text, mida, color="r", on_fletxa_finalitzada=None):
+    def __init__(self, ax, N, text, mida, color="r", on_fletxa_finalitzada=None):
         super().__init__(ax, None, None, mida, text, color)
 
-        self.Z = Z
-        self.N = Z.shape[::-1]
+        self.N = N
 
         self.stop = False
         self.on_fletxa_finalitzada = on_fletxa_finalitzada

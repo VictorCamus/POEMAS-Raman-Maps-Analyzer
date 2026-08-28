@@ -77,7 +77,7 @@ class GestorPerfils(BaseMenu):  # Classe que gestiona les accions relacionades a
             map.profiles.arrow[num] = arrow
 
         profile = ProfileData()
-        arrow = FletxaInteractiva(map.axis, channel.Z, num + 1, file.geometry.midaBase,
+        arrow = FletxaInteractiva(map.axis, file.geometry.N, num + 1, file.geometry.midaBase,
                                   self.color[num % 8], on_fletxa_finalitzada=save_arrow)
 
     def _save_prf(self, file, fig, ax): # Guarda els perfils dibuixats en fitxers de perfil.
@@ -121,7 +121,8 @@ class GestorPerfils(BaseMenu):  # Classe que gestiona les accions relacionades a
                 line.remove()
                 
                 if nprof > 1:
-                    y_min = np.minimum(y_min, dades.min()); y_max = np.maximum(y_max, dades.max()); length_max = np.maximum(length_max, profiles[num].length)
+                    y_min = np.minimum(y_min, np.nanmin(dades)); y_max = np.maximum(y_max, np.nanmax(dades));
+                    length_max = np.maximum(length_max, profiles[num].length)
                     perfils_axis.plot(punts, dades, color=draw_prf.colors[num % 8])
                 
             if nprof > 1:
@@ -162,7 +163,7 @@ class MostrarPerfils(BaseFigureWindow):
         self.axis.set_xlabel(r'Length ($\mu$m)')
         self.axis.set_xlim(0, self.profiles[0].length)
         self.axis.set_ylabel(self.channel.ax_title)
-        
+
         self.line = {}
         _, _, self.line[0] = self.file.view.map.profiles.plot(0, self.axis, self.channel.Z)
         
@@ -197,6 +198,7 @@ class MostrarPerfils(BaseFigureWindow):
     @num.setter
     def num(self, value):
         self._num = value % (self.nprof+1)
+
 
     def plot_file(self, value):
         self.file = value
@@ -239,9 +241,9 @@ class MostrarPerfils(BaseFigureWindow):
             for num in self.profiles:
                 x, y, self.line[num] = self.file.view.map.profiles.plot(num, self.axis, self.channel.Z)
 
-                xmax = max(xmax, x[-1])
-                ymin = min(ymin, np.min(y))
-                ymax = max(ymax, np.max(y))
+                xmax = np.nanmax([xmax, x[-1]])
+                ymin = np.nanmin([ymin, np.nanmin(y)])
+                ymax = np.nanmax([ymax, np.nanmax(y)])
 
             diff = (ymax - ymin) / 15 if ymax > ymin else 1
 
