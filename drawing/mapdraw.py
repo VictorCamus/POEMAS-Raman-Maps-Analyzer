@@ -1,7 +1,7 @@
-from matplotlib.figure import Figure
 import numpy as np
+from matplotlib.figure import Figure
+
 from process.basics import truncar_significatives
-# DIBUIX_MAPES: Llig les dades relacionades amb un fitxer AIST i les dibuixa sobre una figura.
 
 def create_map(*args, **kwargs):
     figure = Figure()
@@ -17,13 +17,31 @@ def create_map(*args, **kwargs):
     
     return figure, axis, image, cbar
 
+def create_cbar(figure, image):
+    cax = figure.add_axes([0.9775, 0.11, 0.08266666, 0.77777])
+    cbar = figure.colorbar(image, cax=cax, orientation='vertical')
+    cbar.set_ticks([])
+
+    cbar.limInf = cbar.ax.text(0.65, 0.02, '', ha='center', va='bottom',
+                               fontweight='bold', fontname='DejaVu Sans', rotation=90, transform=cbar.ax.transAxes)
+    cbar.limSup = cbar.ax.text(0.65, 0.98, '', ha='center', va='top',
+                               fontweight='bold', fontname='DejaVu Sans', rotation=90, transform=cbar.ax.transAxes)
+
+    return cbar
+
+def ajust_eixos(ax): # Elimina els eixos del mapa
+    ax.set_axis_off()
+    ax.set_aspect('equal') # Quadra l'aspecte de la imatge sense deformar-la.
+    ax.set_facecolor('none') # Lleva el fons.
+    ax.set_autoscale_on(True)
+
 def update_map(image, cmap, Z, lims, units,
                mida = None, colLims = ('w', 'k'), cbar = None, mask = None):
     vmin, vmax = lims
     
     if cmap == 'GRAIN': Z = (Z > 0).astype(int)  # Matriu binària: 1 si és un gra, 0 si no
 
-    image.set_data(Z)
+    update_data(image, Z, mask)
     image.set_cmap(cmap)
     image.set_clim(vmin, vmax)
     image.set_clim(vmin, vmax)
@@ -31,23 +49,11 @@ def update_map(image, cmap, Z, lims, units,
     if mida is not None: image.set_extent([0, mida[0], 0, mida[1]])
     if cbar: update_cbar(cbar, lims, units = units, colors = colLims) # Barra de colors.
 
-def ajust_eixos(ax): # Elimina els eixos del mapa
-    ax.set_axis_off()
-    ax.set_aspect('equal') # Quadra l'aspecte de la imatge sense deformar-la.
-    ax.set_facecolor('none') # Lleva el fons.
-    ax.set_autoscale_on(True)
-    
-def create_cbar(figure, image):
-    cax = figure.add_axes([0.9775, 0.11, 0.08266666, 0.77777])
-    cbar = figure.colorbar(image, cax=cax, orientation='vertical')
-    cbar.set_ticks([])
+def update_data(image, data, mask):
+    if mask is not None: Z = np.ma.masked_where(~mask, data)
+    else: Z = data.copy()
 
-    cbar.limInf = cbar.ax.text(0.65, 0.02, '', ha='center', va='bottom',
-        fontweight='bold', fontname='DejaVu Sans', rotation=90, transform=cbar.ax.transAxes)
-    cbar.limSup = cbar.ax.text(0.65, 0.98, '', ha='center', va='top', 
-        fontweight='bold', fontname='DejaVu Sans', rotation=90, transform=cbar.ax.transAxes)
-    
-    return cbar
+    image.set_data(Z)
 
 def update_cbar(cbar, lims, units=None, colors = ('w', 'k')):
     vmin, vmax = lims  # Assignació directa

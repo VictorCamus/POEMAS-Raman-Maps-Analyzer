@@ -1,12 +1,8 @@
-from matplotlib.pyplot import close
-import shutil
-import stat
 import numpy as np
 from pathlib import Path
 from tkinter import messagebox, Button, filedialog, Frame
 
 from drawing.arrows import FletxaInteractiva
-from drawing.plots import base_plot
 from .base import BaseMenu
 from window import BaseFigureWindow
 from window.widgets import Widget
@@ -25,8 +21,6 @@ class GestorPerfils(BaseMenu):  # Classe que gestiona les accions relacionades a
         accions = [
             ('Afegir', lambda: self._add_prf(), '<Shift-P>'),
             ('Sincronitzar perfils', lambda: self._sync_prf(), None),
-            ('Guardar', lambda: self.save_file(func = self._save_prf), '<Control-p>'),
-            ('Guardar tots els fitxers', lambda: self.save_file(func = self._save_prf, tots = True), '<Control-Shift-P>'),
             ('Mostrar perfils', lambda: self.obrir_mostrar_perfils(), None),
             ('SEPARATOR'),
             ('Esborrar', lambda: self._close_prf(), '<Control-Alt-p>'),
@@ -79,72 +73,6 @@ class GestorPerfils(BaseMenu):  # Classe que gestiona les accions relacionades a
         profile = ProfileData()
         arrow = FletxaInteractiva(map.axis, file.geometry.N, num + 1, file.geometry.midaBase,
                                   self.color[num % 8], on_fletxa_finalitzada=save_arrow)
-
-    def _save_prf(self, file, fig, ax): # Guarda els perfils dibuixats en fitxers de perfil.
-        if not file.objects.profiles:
-            messagebox.showerror("Error en guardar els perfils", "No hi ha cap perfil dibuixat")
-            return False
-
-        profiles = file.objects.profiles
-        draw_prf = file.view.map.profiles
-        nprof = len(profiles)
-
-        path_profile = file.folder / 'Perfils'
-        if path_profile.exists():
-            shutil.rmtree(path_profile, onerror=self._handle_remove_readonly)
-
-        ax.set_xlabel(r'Length ($\mu$m)')
-        fig.subplots_adjust(left=0.2, bottom=0.2)
-
-        if nprof > 1:
-            perfils_fig, perfils_axis = base_plot(r'Length ($\mu$m)', '', dim=(6,4))        
-            perfils_fig.subplots_adjust(left=0.2, bottom=0.2)
-        
-        folders = {}
-        for num in range(nprof):
-            num += 1
-            folders[num] = path_profile / f'Perfil - {num}'
-            folders[num].mkdir(parents=True)
-
-        for ch in file.channel.values():
-            if ch.name == 'Grain': continue
-            y_min = np.inf; y_max = -np.inf; length_max = 0
-
-            for num in range(nprof):
-                ax.set_ylabel(ch.ax_title)
-                punts, dades, line = draw_prf.plot(num, ax, ch.Z)
-
-                prof_path = folders[num+1] / f'{ch.name} - P{num+1}'
-                fig.savefig(f'{prof_path}.png', bbox_inches = 'tight')
-                np.savetxt(f'{prof_path}.txt', np.column_stack((punts, dades)), fmt='%.3f')
-
-                line.remove()
-                
-                if nprof > 1:
-                    y_min = np.minimum(y_min, np.nanmin(dades)); y_max = np.maximum(y_max, np.nanmax(dades));
-                    length_max = np.maximum(length_max, profiles[num].length)
-                    perfils_axis.plot(punts, dades, color=draw_prf.colors[num % 8])
-                
-            if nprof > 1:
-                perfils_axis.set_ylabel(ch.ax_title)
-                perfils_axis.set_xlim(0, length_max)
-                diff = (y_max-y_min)/15
-                perfils_axis.set_ylim(y_min-diff, y_max+diff)
-                perfils_fig.savefig(path_profile / f'{ch.name} - Perfils.png')
-                for line in perfils_axis.lines: line.remove()
-
-        for ch in file.channel.values():
-            file.view.map.refresh_map(ch)
-            file.view.map.figure.savefig(path_profile / f'{ch.name}.png', bbox_inches='tight')
-
-        if nprof > 1: close(perfils_fig)
-
-        return True
-    
-    def _handle_remove_readonly(self, func, path, exc_info):
-        path = Path(path)
-        path.chmod(stat.S_IWRITE)
-        func(path)
         
     def _close_prf(self):
         if not self.comprova_fitxer(): return
@@ -268,17 +196,27 @@ class MostrarPerfils(BaseFigureWindow):
             filetypes=[("PNG", "*.png")]
         )
 
-        if not ruta: return 
+        if not ruta: return
 
         self.figure.savefig(ruta, bbox_inches = 'tight')
         p = Path(ruta)
 
-        for i, line in enumerate(self.line.values(), start=1):
-            txt_ruta = p.with_name(f"{self.file.name} - {self.channel.name} Perfil {i}.txt")
-            x = line.get_xdata(); y = line.get_ydata()
+        if self.num == self.nprof:
+            for i, line in enumerate(self.line.values(), start=1):
+                self._save_prf_txt(p, line, i)
+        else: self._save_prf_txt(p, self.line[self.num], self.num+1)
 
-            np.savetxt(txt_ruta, np.column_stack((x, y)), fmt="%.3f")
-    
+        map_route = p.parent / p.stem
+        print(map_route)
+
+        self.file.view.map.figure.savefig(f'{map_route} - MAP.png', bbox_inches='tight')
+
+    def _save_prf_txt(self, path, line, i):
+        txt_ruta = path.with_name(f"{self.file.name} - {self.channel.name} Perfil {i}.txt")
+        x = line.get_xdata(); y = line.get_ydata()
+
+        np.savetxt(txt_ruta, np.column_stack((x, y)), fmt="%.3f")
+
     def _create_widgets(self):
         files = list(key for key, f in self.files.items() if self.profiles is not None)
         if not self.profiles: self.file = files[0]

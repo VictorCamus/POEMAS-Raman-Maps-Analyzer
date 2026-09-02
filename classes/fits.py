@@ -8,6 +8,7 @@ import numpy as np
 from window.widgets import Widget
 from window.builder import BaseWindow
 from process.mathfuncs import Functions, FuncParams, DEFAULT_PARAMS, linear_combination
+from process.basics import find_nearest
 
 @dataclass
 class FitConfig:
@@ -28,6 +29,7 @@ class Peak:
 
 @dataclass
 class PeakResult:
+    ref: str
     name: str
     params: dict[str, np.ndarray] = field(default_factory=dict)
     function: str = 'Gaussiana'
@@ -51,13 +53,14 @@ class FitSpec(BaseWindow):
         self.config = config or FitConfig()
 
         super().__init__(gestor, "Ajust espectral")
+
+        self.window.protocol("WM_DELETE_WINDOW", self.close_window)
         self.main_frame.pack_configure(fill=None, expand=False)
         self.control_frame.pack_configure(side = 'top', anchor='w')
         self.peaks = {}
         self.spec = self.file.view.spectrum
 
-        self.spec.fitline = {}
-        self.spec.fitline['All'], = self.spec.axis.plot(self.xdata, np.full(self.xdata.shape, 0), color='black')
+        if not 'All' in self.spec.fitline: self.spec.fitline['All'], = self.spec.axis.plot(self.xdata, np.full_like(self.xdata, 0), color = 'k')
         self.peaks_frame = LabelFrame(self.main_frame)
         self.peaks_frame.pack(side = 'bottom', fill='both', expand=True, pady = 2)
 
@@ -94,9 +97,21 @@ class FitSpec(BaseWindow):
     def xrange(self):
         return self.channel.spectra.xrange
 
-    def _add_peak(self, value = None, peak = None):
-        i = len(self.peaks)
+    def close_window(self):
+        spec = self.file.view.spectrum
+
+        for fitplot in spec.fitline.values(): fitplot.remove()
+        spec.fitline = dict()
+        for etiquette in spec.etiquette.values(): etiquette.remove()
+        spec.etiquette = dict()
+
+        spec.canvas.draw_idle()
+        self.window.destroy()
+
+    def _add_peak(self, value = None, peak = None, new = False):
         colors = list(TABLEAU_COLORS.values())
+
+        i = len(self.peaks)
 
         if peak is None:
             peak = Peak(name=f'P{i + 1}')
@@ -119,7 +134,7 @@ class FitSpec(BaseWindow):
 
             'bkg': Widget(key='bkg', var_type=bool, init=peak.bkg,
                    text = 'Fons:', widget='checkbutton',
-                   setter = peak, mode = 'attr')}
+                   setter = self.update_bkg, setter_kwargs = {'peak': peak})}
 
         peak.frame = frame
         peak.widgets = widgets
@@ -140,7 +155,19 @@ class FitSpec(BaseWindow):
             self._add_parameter_widgets(peak, parameter, name, row)
 
         peak.ref = f'P{i+1}'
-        self.spec.fitline[peak.ref] = self.spec.axis.fill_between(self.xdata, peak.ydata(self.xdata), 0, color = colors[i+1], alpha=0.6)
+        if new:
+            self.spec.fitline[peak.ref] = self.spec.axis.fill_between(self.xdata, peak.ydata(self.xdata), self.bkg, color=colors[len(self.spec.fitline)], alpha=0.6)
+
+            if 'x0' in peak.params:
+                x0 = peak.params['x0']['value']
+                idx = find_nearest(self.xdata, x0)
+                ycoord = peak.params['A']['value'] + self.bkg[idx]
+
+                self.spec.etiquette[peak.ref] = self.spec.axis.annotate(f'{peak.name}\n{x0:.2f}',
+                                                          xy=(x0, ycoord),
+                                                          xytext=(0, 10), textcoords='offset points', ha='center',
+                                                          color='k',
+                                                          fontweight='bold', family='Consolas', fontsize=14)
         self.peaks[peak.ref] = peak
 
     def _add_parameter_widgets(self, peak, parameter, name, row):
@@ -176,15 +203,46 @@ class FitSpec(BaseWindow):
             else: peak.params[name] = DEFAULT_PARAMS[name].copy()
 
         self._rebuild_peak_widgets(peak)
-        self.update_peak(peak.name, ydata = peak.ydata(self.xdata), bkg = peak.bkg)
+        self.update_peak(peak)
 
-    def update_peak(self, name, ydata, bkg):
+    def update_peak(self, peak):
+        name = peak.ref
+        ydata = peak.ydata(self.xdata)
+        bkg = peak.bkg
+
         if not bkg:
             ydata += self.bkg
             verts = np.column_stack([np.r_[self.xdata, self.xdata[::-1]], np.r_[ydata, self.bkg[::-1]]])
-        else: verts = np.column_stack([np.r_[self.xdata, self.xdata[::-1]], np.r_[ydata, np.full_like(ydata, 0)]])
 
-        self.spec.fitline[name].set_verts([verts])
+            self.spec.fitline[name].set_verts([verts])
+
+            if 'x0' in peak.params:
+                x0 = peak.params['x0']['value']
+                idx = find_nearest(self.xdata, x0)
+                ycoord = peak.params['A']['value'] + self.bkg[idx]
+                self.spec.etiquette[name].set_text(f'{peak.name}\n{x0:.2f}')
+                self.spec.etiquette[name].xy = (x0, ycoord)
+
+        else:
+            bkg = np.zeros_like(self.channel.spectra.bkg)
+            bkg[self.xrange] = self.bkg
+            self.spec.bkgline.set_ydata(bkg)
+
+            for peak in self.peaks.values():
+                if not peak.bkg: self.update_peak(peak)
+
+        self.spec.canvas.draw_idle()
+
+    def update_bkg(self, value, peak):
+        colors = list(TABLEAU_COLORS.values())
+
+        if value:
+            self.spec.fitline[peak.ref].remove()
+            self.spec.fitline.pop(peak.ref)
+        else:
+            self.spec.fitline[peak.ref] = self.spec.axis.fill_between(self.xdata, peak.ydata(self.xdata), 0, color = colors[len(self.spec.fitline)], alpha=0.6)
+
+        peak.bkg = value
         self.spec.canvas.draw_idle()
 
     def _rebuild_peak_widgets(self, peak):
@@ -201,7 +259,7 @@ class FitSpec(BaseWindow):
 
     def update_value(self, value, peak, par):
         peak.params[par]['value'] = value
-        self.update_peak(peak.ref, peak.ydata(self.xdata), bkg = peak.bkg)
+        self.update_peak(peak)
         self._update_fit()
 
     def _update_fit(self):
@@ -217,7 +275,12 @@ class FitSpec(BaseWindow):
         if not self.peaks: return
 
         peak = next(reversed(self.peaks.values()))
-        self.spec.fitline[peak.ref].remove()
+        if peak.ref in self.spec.fitline:
+            self.spec.fitline[peak.ref].remove()
+            self.spec.fitline.pop(peak.ref)
+            self.spec.etiquette[peak.ref].remove()
+            self.spec.etiquette.pop(peak.ref)
+
         peak.frame.destroy()
 
         for key, item in self.peaks.items():
@@ -248,10 +311,10 @@ class FitSpec(BaseWindow):
                            xrange = self.xrange)
 
         for name, peak in self.peaks.items():
-            result.peaks[peak.name] = PeakResult(name = peak.name, function = peak.function, bkg = peak.bkg)
+            result.peaks[peak.ref] = PeakResult(ref = peak.ref, name = peak.name, function = peak.function, bkg = peak.bkg)
 
             for par in peak.params:
-                result.peaks[peak.name].params[par] = np.full(self.channel.Z.shape, np.nan, dtype=float)
+                result.peaks[peak.ref].params[par] = np.full(self.channel.Z.shape, np.nan, dtype=float)
 
             result.r2 = np.full(self.channel.Z.shape, np.nan, dtype=float)
 
@@ -288,7 +351,7 @@ class FitSpec(BaseWindow):
 
                 for name, peak in self.peaks.items():
                     for par_name in peak.params:
-                        fit_result.peaks[peak.name].params[par_name][i, j] = params[f'{name}_{par_name}'].value
+                        fit_result.peaks[peak.ref].params[par_name][i, j] = params[f'{name}_{par_name}'].value
 
                     fit_result.r2[i, j] = r2
 
@@ -338,7 +401,7 @@ class FitSpec(BaseWindow):
                 peak.widgets[f'{par_name}_value'].set(par['value'])
 
         for peak in self.peaks.values():
-            self.update_peak(peak.ref, ydata = peak.ydata(self.xdata), bkg = peak.bkg)
+            self.update_peak(peak)
 
         self._update_fit()
         self.widgets['r2'].set(round(r2, 4))
@@ -409,7 +472,7 @@ class FitSpec(BaseWindow):
                        text='R²', widget='entry', widget_kwargs = {'state': 'readonly', 'width': 10}),
 
             'add': Widget(key = 'add', var_type = str, init = 'Afegir pic',
-                    widget = 'button', setter = self._add_peak),
+                    widget = 'button', setter = self._add_peak, setter_kwargs = {'new': True}),
 
             'remove': Widget(key='remove', var_type=str, init='Eliminar pic',
                             widget='button', setter=self._remove_peak),

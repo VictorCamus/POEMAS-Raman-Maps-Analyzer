@@ -20,17 +20,21 @@ def EMG(x, x0, FWHM, A, tau):
 
     return A * exponnorm.pdf(x, K=K, loc=x0, scale=sigma)
 
-def constant(x: float, C: float):
-    return np.full_like(x, C)
+def straight_line(x, a1, a0):
+    return a1 * x + a0
 
-Functions = {'Gaussiana': gaussian, 'Lorentziana': lorentz, 'Voigt': voigt, 'EMG': EMG, 'C': constant}
+def constant(x: float, a0: float):
+    return np.full_like(x, a0)
+
+Functions = {'Gaussiana': gaussian, 'Lorentziana': lorentz, 'Voigt': voigt, 'EMG': EMG, 'Recta': straight_line, 'C': constant}
 
 FuncParams = {
     'Gaussiana': ('x0', 'FWHM', 'A'),
     'Lorentziana': ('x0', 'FWHM', 'A'),
     'Voigt': ('x0', 'sigma', 'gamma', 'A'),
     'EMG': ('x0', 'FWHM', 'A', 'tau'),
-    'C': ('C',)
+    'Recta': ('a1', 'a0'),
+    'C': ('a0',)
 }
 
 DEFAULT_PARAMS = {
@@ -40,11 +44,12 @@ DEFAULT_PARAMS = {
     'gamma': {'value': 1.0,   'min': 0.0,     'max': np.inf, 'vary': True, 'color': 'inferno', 'dim': 1},
     'A':     {'value': 100.0, 'min': 0.0,     'max': np.inf, 'vary': True, 'color': 'hot',     'dim': 0},
     'tau':   {'value': 1.0,   'min': 0.0,     'max': np.inf, 'vary': True, 'color': 'Reds',    'dim': 1},
-    'C':     {'value': 0.0,   'min': -np.inf, 'max': np.inf, 'vary': True, 'color': 'gray',    'dim': 0}
+    'a1':    {'value': 0.0,   'min': -np.inf, 'max': np.inf, 'vary': True, 'color': 'Blues',   'dim': -1},
+    'a0':    {'value': 0.0,   'min': -np.inf, 'max': np.inf, 'vary': True, 'color': 'gray',    'dim': 0}
 }
 
 def get_units(dim, units):
-    super = {2: '²', 3: '³'}
+    super = {-1: '⁻¹', '2': '²', 3: '³'}
 
     if dim == 0: return 'cts'
     if dim == 1: return units

@@ -6,6 +6,7 @@ from process.images import rotate
 from tkinter import messagebox
 from window.builder import BaseWindow
 from window.widgets import Widget
+from drawing.mapdraw import update_data
 
 class GestorImatges(BaseMenu): # Classe que gestiona les accions relacionades amb el zoom de les imatges.
     ordre = 10 # Atribut per a ordenar els menús (opcional)
@@ -32,6 +33,7 @@ class GestorImatges(BaseMenu): # Classe que gestiona les accions relacionades am
         if not file: file = self.current_file
         channel = file.current_channel
         g = file.geometry
+        mask = file.objects.mask
         # --- Normalitzar rotació ---
 
         g.rotation += rot if not g.flip else -rot # Si està rotada, la rotació resta, si no, suma.
@@ -39,21 +41,41 @@ class GestorImatges(BaseMenu): # Classe que gestiona les accions relacionades am
 
         # --- Rotar canals ---
         for ch in file.channel.values():
+            spec = ch.spectra
+
             if rot != 0:
                 ch.Z = np.rot90(ch.Z, k=rot)
-                if ch.spectra is not None:
-                    ch.spectra.ydata = np.rot90(ch.spectra.ydata, k=rot)
-                    ch.spectra.bkgdata = np.rot90(ch.spectra.bkgdata, k=rot)
-                    ch.spectra.coords = rotate(ch.spectra.coords, g.N, rotation = rot)
+                if mask is not None: mask = np.rot90(mask, k=rot)
+
+                if spec is not None:
+                    spec.ydata = np.rot90(spec.ydata, k=rot)
+                    spec.bkgdata = np.rot90(spec.bkgdata, k=rot)
+                    spec.coords = rotate(spec.coords, g.N, rotation = rot)
+
+                    for fit in spec.fits.values():
+                        for peak in fit.peaks.values():
+                            for name, par in peak.params.items():
+                                peak.params[name] = np.rot90(par, k = rot)
+
+                        fit.r2 = np.rot90(fit.r2, k = rot)
 
             if flip:
                 ch.Z = np.flip(ch.Z, axis = 1)
-                if ch.spectra is not None:
-                    ch.spectra.ydata = np.flip(ch.spectra.ydata, axis = 1)
-                    ch.spectra.bkgdata = np.flip(ch.spectra.bkgdata, axis=1)
-                    ch.spectra.coords = rotate(ch.spectra.coords, g.N, flip = True)
+                if mask is not None: mask = np.flip(mask, axis = 1)
 
-        file.view.map.image.set_data(channel.Z)
+                if spec is not None:
+                    spec.ydata = np.flip(spec.ydata, axis = 1)
+                    spec.bkgdata = np.flip(spec.bkgdata, axis=1)
+                    spec.coords = rotate(spec.coords, g.N, flip = True)
+
+                    for fit in spec.fits.values():
+                        for peak in fit.peaks.values():
+                            for name, par in peak.params.items():
+                                peak.params[name] = np.flip(par, axis = 1)
+
+                        fit.r2 = np.flip(fit.r2, axis = 1)
+
+        update_data(file.view.map.image, channel.Z, mask)
         self._update_rotation(file, rot, flip)
 
     def _update_rotation(self, file, rot, flip):

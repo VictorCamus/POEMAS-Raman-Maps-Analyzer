@@ -189,13 +189,14 @@ class Llindar(BaseMapWindow):
     def __init__(self, gestor):
         super().__init__(gestor, "Calcular fons")
 
+        self.z = self.channel.Z.copy()
+        self.mask = np.ones_like(self.z, dtype=bool)
+
     def threshold(self, value):
         inf, sup = self.widgets['thrInf'].get(), self.widgets['thrSup'].get()
 
-        self.z = self.channel.Z.copy()
         self.mask = (self.z >= inf) & (self.z <= sup)
-        self.z[~self.mask] = np.nan
-        self.update_fig()
+        self.update_fig(mask = self.mask)
 
     def apply_threshold(self, value):
         self.file.objects.mask = self.mask

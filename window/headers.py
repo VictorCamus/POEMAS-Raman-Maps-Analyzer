@@ -2,8 +2,11 @@ import numpy as np
 
 from tkinter.ttk import Frame
 from tkinter import messagebox
+
+from classes.fits import Peak
 from .widgets import Widget
 from drawing.colormap import cmaps
+from drawing.mapdraw import update_data
 from process.mathfuncs import DEFAULT_PARAMS, get_units
 
 # Fitxer que crea la capçalera per a les pestanyes del notebook.
@@ -196,13 +199,13 @@ class HeaderSpec:
 
     def on_spectra_left_change(self, value):
         self.channel.spectra.lims[0] = value
-        self.spec.axis.set_xlim(*self.channel.spectra.lims)
+        self.spec.axis.set_xlim(self.channel.spectra.lims)
         self.spec.canvas.draw_idle()
         if self.view.fit_key == 'rawdata': self._update_map(self.channel)
 
     def on_spectra_right_change(self, value):
         self.channel.spectra.lims[1] = value
-        self.spec.axis.set_xlim(*self.channel.spectra.lims)
+        self.spec.axis.set_xlim(self.channel.spectra.lims)
         self.spec.canvas.draw_idle()
         if self.view.fit_key == 'rawdata': self._update_map(self.channel)
 
@@ -260,6 +263,17 @@ class HeaderSpec:
 
         if self.view.fit_key == 'rawdata': self._update_map(self.channel)
 
+    def on_etiq_change(self, value):
+        for etiq in self.spec.etiquette.values(): etiq.set_visible(value)
+
+        self.spec.canvas.draw_idle()
+
+    def delete_fit(self, value):
+        if self.view.fit_key == 'rawdata': return
+
+        self.channel.spectra.fits.pop(self.view.fit_key)
+        self.view.update_fits()
+
     def _redraw(self):
         ch = self.channel
         map = self.spec.model.map
@@ -267,7 +281,8 @@ class HeaderSpec:
         map.image.set_clim(*ch.lims)
         map.cbar.limInf.set_text(f"{ch.lims[0]:g}" + (f" {ch.units}" if ch.units else ""))
         map.cbar.limSup.set_text(f"{ch.lims[1]:g}" + (f" {ch.units}" if ch.units else ""))
-        map.image.set_data(ch.Z)
+
+        update_data(map.image, ch.Z, self.spec.objects.mask)
         map.image.set_cmap(ch.color.cmap)
 
         map.header.view.widgets['limInf'].set(ch.lims[0])
@@ -282,13 +297,10 @@ class HeaderSpec:
         lim_inf, lim_sup = spectra.lims
         mask = ((spectra.x >= lim_inf) & (spectra.x <= lim_sup))
 
-        if self.spec.header.view.widgets['bkg'].get():
-            Z = np.nansum(spectra.ydata[:, :, mask], axis=2, dtype=float)
+        if self.view.widgets['bkg'].get():
+            channel.Z = np.nansum(spectra.ydata[:, :, mask], axis=2, dtype=float)
         else:
-            Z = np.nansum(np.maximum(spectra.ydata[:, :, mask] - self.spec.bkg[mask], 0), axis=2, dtype=float)
-
-        Z[~self.spec.model.controller.objects.mask] = np.nan
-        channel.Z = Z
+            channel.Z = np.nansum(np.maximum(spectra.ydata[:, :, mask] - self.spec.bkg[mask], 0), axis=2, dtype=float)
 
         channel.update_lims()
 
@@ -316,19 +328,30 @@ class ViewHeaderSpec:
 
     @fit.setter
     def fit(self, value):
-        if value in self.channel.spectra.fits:
-            self._fit = self.channel.spectra.fits[value]
+        spec = self.channel.spectra
+
+        if value in spec.fits:
+            self._fit = spec.fits[value]
             self.fit_key = value
 
             # En canviar de fit, seleccionem el primer pic
-            self.peak_key, self._peak = next(iter(self.fit.peaks.items()))
+            self._peak = next(iter(self.fit.peaks.values()))
+            self.peak_key = self.peak.ref
 
             if self.parameter_key in self.peak.params: self._parameter = self.peak.params[self.parameter_key]
             else: self.parameter_key, self._parameter = next(iter(self.peak.params.items()))
 
-            self.channel.spectra.units = self._fit.units
-            self.widgets['units'].set(self.channel.spectra.units)
+            spec.units = self._fit.units
+            self.widgets['units'].set(spec.units)
             self.widgets['units'].config(state = 'disabled')
+
+            start, stop = round(spec.x[self.fit.xrange.start], 3), round(spec.x[self.fit.xrange.stop], 3)
+            spec.lims = [start, stop]
+            self.widgets['left'].set(start)
+            self.widgets['right'].set(stop)
+
+            self.controller.spec.axis.set_xlim(spec.lims)
+
             self.update_peaks()
 
         elif value == 'rawdata':
@@ -342,6 +365,8 @@ class ViewHeaderSpec:
 
             self.controller.spec.model.map.footer.view.widgets['track_z'].label.config(text=f'{self.channel.name} ({self.channel.units})')
             self.controller._update_map(self.channel)
+
+        self.controller.spec.plot_data()
 
     @property
     def peak(self):
@@ -406,23 +431,37 @@ class ViewHeaderSpec:
         self.controller.spec.model.map.footer.view.widgets['track_z'].label.config(text = f'{self.parameter_key} ({self.channel.units})')
         self.controller._redraw()
 
+    def update_fits(self):
+        fits = ['rawdata', *self.channel.spectra.fits]
+
+        combo = self.widgets["fit"].widget
+        combo.config(values=fits)
+        combo.options = dict(zip(fits, fits))
+
+        if self.fit_key in fits:
+            combo.set(self.fit_key)
+            self.fit = self.fit_key
+        else:
+            combo.set(fits[0])
+            self.fit = fits[0]
+
     def update_peaks(self):
         if self.fit is None or not self.fit.peaks or not hasattr(self, 'widgets'):
             return
 
-        peaks = [*self.fit.peaks.keys(), 'r2']
-        names = [*[peak.name for peak in self.fit.peaks.values()], 'r2']
-
+        refs = [*self.fit.peaks.keys(), 'r2']
+        peaks = [*[peak.name for peak in self.fit.peaks.values()], 'r2']
+        mm = dict(zip(refs, peaks))
         combo = self.widgets["peak"].widget
         combo.config(values=peaks)
-        combo.options = dict(zip(names, peaks))
+        combo.options = dict(zip(peaks, refs))
 
-        if self.peak_key in peaks:
-            combo.set(self.peak_key)
+        if self.peak_key in self.fit.peaks:
+            combo.set(mm[self.peak_key])
             self.peak = self.peak_key
         else:
-            combo.set(peaks[0])
-            self.peak = peaks[0]
+            combo.set(refs[0])
+            self.peak = refs[0]
 
     def update_params(self):
         if self.peak is None or not self.peak.params or not hasattr(self, 'widgets'):
@@ -486,8 +525,9 @@ class ViewHeaderSpec:
                           text="Fons:", widget='checkbutton',
                           setter = self.controller.on_bkg_change),
 
-            'etiq':  Widget(key = "etiq", var_type = bool, init = False,
-                     text = "Etiquetes:", widget = 'checkbutton'),
+            'etiq':  Widget(key = "etiq", var_type = bool, init = True,
+                     text = "Etiquetes:", widget = 'checkbutton',
+                     setter=self.controller.on_etiq_change),
 
             'fit': Widget(key='fit', var_type=str, init=self.fit,
                           text='Ajusts:', widget='cb', widget_kwargs={'options': opts_fits, 'width': 8},
@@ -499,10 +539,13 @@ class ViewHeaderSpec:
 
             'parameter': Widget(key='parameter', var_type=str, init=self.parameter,
                                 text='Paràmetre:', widget='cb', widget_kwargs={'options': opts_pars, 'width': 8},
-                                setter=self, mode='attr')}
+                                setter=self, mode='attr'),
+
+            'del_fit': Widget(key='del_fit', var_type=str, init='Eliminar ajust',
+                              widget='button', setter=self.controller.delete_fit)}
 
         layout = [(0, 1, 'laser'), (0, 3, 'left'),   (0, 5, 'right'), (0, 6, 'data'), (0, 8, 'log'),
                   (1, 1, 'units'), (1, 3, 'bottom'), (1, 5, 'top'),   (1, 6, 'bkg'),  (1, 8, 'etiq'),
-                  (2, 1, 'fit'),   (2, 3, 'peak'),   (2 ,5, 'parameter')]
+                  (2, 1, 'fit'),   (2, 3, 'peak'),   (2 ,5, 'parameter'),             (2, 8, 'del_fit')]
 
         for row, col, key in layout: self.widgets[key].add(self.frame, row, col)

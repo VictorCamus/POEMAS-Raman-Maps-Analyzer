@@ -148,24 +148,24 @@ def read_aist_raster(r):
         }
     }
 
-    data = result["data"]
-    left, right, bottom, top = result["extent"]
+    # data = result["data"]
+    # left, right, bottom, top = result["extent"]
 
-    fig, ax = plt.subplots()
-
-    im = ax.imshow(
-        data,
-        extent=(left, right, bottom, top),
-        origin="lower",
-        aspect="auto"
-    )
-
-    fig.colorbar(im, ax=ax, label=result["units"]["z"])
-
-    ax.set_xlabel(result["units"]["x"])
-    ax.set_ylabel(result["units"]["y"])
-
-    plt.show()
+    # fig, ax = plt.subplots()
+    #
+    # im = ax.imshow(
+    #     data,
+    #     extent=(left, right, bottom, top),
+    #     origin="lower",
+    #     aspect="auto"
+    # )
+    #
+    # fig.colorbar(im, ax=ax, label=result["units"]["z"])
+    #
+    # ax.set_xlabel(result["units"]["x"])
+    # ax.set_ylabel(result["units"]["y"])
+    #
+    # plt.show()
 
     # MASK (opcional)
     try:
@@ -248,8 +248,8 @@ def read_aist_spectro(r):
 
     xunits = read_qt_string(r)
     yunits = read_qt_string(r)
+    zunits = read_qt_string(r)
 
-    _ = read_qt_int(r)
     nspec = read_qt_int(r)
 
     spectra = spectra.reshape(nspec, nchan)
@@ -269,6 +269,11 @@ def read_aist_spectro(r):
             "z": "nm",
         }
     }
+
+def read_property(r):
+    return {'name': read_qt_string(r),
+    'description': read_qt_string(r),
+    'value': read_qt_string(r)}
 
 def read_aist_curvemap(r):
     spectra = read_qt_byte_array(r, dtype="<f4", uncompressed=False)
@@ -299,8 +304,8 @@ def read_aist_curvemap(r):
 
     xunits = read_qt_string(r)
     yunits = read_qt_string(r)
+    zunits = read_qt_string(r)
 
-    _ = read_qt_int(r)
     nspec = read_qt_int(r)
 
     spectra = spectra.reshape(nspec, nchan)
@@ -310,77 +315,12 @@ def read_aist_curvemap(r):
     read_aist_raster(r)
     r.pos += 12
     common = read_aist_common_spectro(r)
-    _ = read_qt_int(r)
-    name = read_qt_string(r)
-    desc = read_qt_string(r)
-    qscan = read_qt_string(r)
+    nprop = read_qt_int(r)
 
-    _ = read_qt_byte(r)
-    date_time = read_qt_string(r)
-    date_time_desc = read_qt_string(r)
-    date_time_value = read_qt_string(r)
+    for _ in range(nprop):
+        read_property(r)
+        read_qt_byte(r)
 
-    _ = read_qt_byte(r)
-    soft_version = read_qt_string(r)
-    soft_version_desc = read_qt_string(r)
-    soft_version_value = read_qt_string(r)
-
-    _ = read_qt_byte(r)
-    lua_setting1 = read_qt_string(r)
-    lua_setting1_desc = read_qt_string(r)
-    lua_setting1_value = read_qt_string(r)
-
-    _ = read_qt_byte(r)
-    ptsXY = read_qt_string(r)
-    ptsXY_desc = read_qt_string(r)
-    ptsXY_value = read_qt_string(r)
-
-    _ = read_qt_byte(r)
-    scandir = read_qt_string(r)
-    scandir_desc = read_qt_string(r)
-    scandir_value = read_qt_string(r)
-
-    _ = read_qt_byte(r)
-    period = read_qt_string(r)
-    period_desc = read_qt_string(r)
-    period_value = read_qt_string(r)
-
-    _ = read_qt_byte(r)
-    fbIn = read_qt_string(r)
-    fbIn_desc = read_qt_string(r)
-    fbIn_value = read_qt_string(r)
-
-    _ = read_qt_byte(r)
-    setpoint = read_qt_string(r)
-    sp = read_qt_string(r)
-    sp_value = read_qt_string(r)
-
-    _ = read_qt_byte(r)
-    fbEnabled = read_qt_string(r)
-    fben = read_qt_string(r)
-    fbon = read_qt_string(r)
-
-    _ = read_qt_byte(r)
-    fbIn = read_qt_string(r)
-    fbIn_desc = read_qt_string(r)
-    fbIn_value = read_qt_string(r)
-
-    _ = read_qt_byte(r)
-    fbIn = read_qt_string(r)
-    fbIn_desc = read_qt_string(r)
-    fbIn_value = read_qt_string(r)
-
-    _ = read_qt_byte(r)
-    fbIn = read_qt_string(r)
-    fbIn_desc = read_qt_string(r)
-    fbIn_value = read_qt_string(r)
-
-    _ = read_qt_byte(r)
-    fbIn = read_qt_string(r)
-    fbIn_desc = read_qt_string(r)
-    fbIn_value = read_qt_string(r)
-
-    string = read_qt_byte(r)
     _ = read_qt_int(r)
     _ = read_qt_int(r)
     _ = read_qt_double(r)

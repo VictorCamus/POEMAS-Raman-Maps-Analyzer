@@ -24,7 +24,6 @@ class ChannelData:  # Crea canals per a cada tipus de mapa dins d'un fitxer.
 
         if self.lims is None: self.update_lims()
 
-
     @property
     def ax_title(self):
         return f'{self.name} ({self.units})' if self.units else f'{self.name}'

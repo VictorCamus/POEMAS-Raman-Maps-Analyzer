@@ -21,15 +21,15 @@ class BaseWindow:
         self.intersect = True
         self.update = True
 
-        window = Toplevel(gestor.root)
-        window.title(title)
-        window.resizable(False, False)
+        self.window = Toplevel(gestor.root)
+        self.window.title(title)
+        self.window.resizable(False, False)
 
-        window.transient(gestor.root)
-        window.lift()
-        window.focus_force()
+        self.window.transient(gestor.root)
+        self.window.lift()
+        self.window.focus_force()
 
-        self.main_frame = Frame(window)
+        self.main_frame = Frame(self.window)
         self.main_frame.pack(padx=10, pady=10)
 
         self.control_frame = Frame(self.main_frame)
@@ -199,13 +199,18 @@ class BaseMapWindow(BaseWindow):
         self.cbar.limInf.set_color(ch.color.limInf)
         self.cbar.limSup.set_color(ch.color.limSup)
 
-        map.update_map(self.image, ch.color.cmap, ch.Z, ch.lims, self.units, mida = self.file.geometry.midaBase, colLims = ch.color.lims, cbar = self.cbar)
+        map.update_map(self.image, ch.color.cmap, ch.Z, ch.lims, self.units,
+                       mida = self.file.geometry.midaBase, colLims = ch.color.lims,
+                       cbar = self.cbar, mask = self.file.objects.mask)
+
         self.escala.color = ch.color.scale
         self.image.set_clim(ch.lims)
         self.canvas.draw_idle()
     
-    def update_fig(self):
-        self.image.set_data(self.z)
+    def update_fig(self, mask = None):
+        if mask is None: mask = self.file.objects.mask
+
+        map.update_data(self.image, self.z, mask)
         self.image.set_clim(*self.lims)
         self.image.set_clim(*self.lims)
         

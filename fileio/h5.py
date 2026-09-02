@@ -38,6 +38,9 @@ def read_object(group, fileclass):
 
                 data[name] = {key_type(key): read_object(obj[key], value_type) for key in keys}
 
+            elif origin is tuple:
+                data[name] = tuple(obj.attrs["values"])
+
             elif annotation is slice:
                 data[name] = slice(to_python(obj.attrs.get("start")), to_python(obj.attrs.get("stop")), to_python(obj.attrs.get("step")))
 
@@ -80,6 +83,10 @@ def save_value(group, name, value):
     elif isinstance(value, np.ndarray):
         group.create_dataset(name, data=value)
 
+    elif isinstance(value, tuple):
+        tuple_group = group.create_group(name)
+        tuple_group.attrs["values"] = value
+        
     elif isinstance(value, slice):
         slice_group = group.create_group(name)
 

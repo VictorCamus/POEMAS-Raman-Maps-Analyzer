@@ -3,38 +3,6 @@ from matplotlib.ticker import AutoLocator, ScalarFormatter
 
 from process.basics import truncar_significatives
 
-def guardar_histograma(fig, ax, z, lims, carpeta, name, title=None, nbins=100, weight=False, nom=None):
-    if name != 'GRAIN': basePath = carpeta / f'Histogrames - {name}'
-    else: basePath = carpeta
-        
-    if weight: basePath += ' Pesat'; name += ' Pesat'
-
-    basePath.mkdir(parents=True, exist_ok=True)
-
-    # 1. HISTOGRAMA: Bàsic.
-    bar, HIST, histLims = hist(ax, z, lims, xlabel=title, nbins = nbins, weight=weight)
-    np.savetxt(f"{basePath}/{name} Hist.txt", HIST, fmt='%.5f')
-    fig.subplots_adjust(left=0.05, bottom=0.25)
-    fig.savefig(f"{basePath}/{name} Hist.png")
-    bar.remove()
-
-    # 2. BOXPLOT
-    boxFig = boxplot(ax, z, histLims, name = name, ylabel=title, weight=weight)
-    databox = save_boxplot_data(name, boxFig)
-
-    width = max(len(label) for label in databox)
-
-    with open(f"{basePath}/{name} Boxplot data.txt", 'w', encoding='utf-8') as f:
-        for label, value in databox.items():
-            if isinstance(value, (int, float, np.number)):
-                value = f'{value:.3f}'
-
-            f.write(f'{label:<{width}}\t{value}\n')
-
-    fig.subplots_adjust(left=0.2, bottom=0.15)
-    fig.savefig(f"{basePath}/{name} Boxplot.png")
-    remove_boxplot(boxFig)
-
 def hist(ax, data, lims, xlabel = None, nbins = 80, weight = False, color='blue'):
     vmin, vmax = lims
     ample = (vmax - vmin) / nbins
@@ -75,41 +43,6 @@ def remove_boxplot(boxplot):
     for element in boxplot.values():
         for artist in element:
             artist.remove()
-
-def lims_outliers(arr):
-    quart1 = np.percentile(arr, 10)
-    quart3 = np.percentile(arr, 90)
-    iqr = quart3 - quart1
-    inf = quart1 - 4 * iqr; sup = quart3 + 4 * iqr
-    lim_inf = max(inf, np.min(arr))
-    lim_sup = min(sup, np.max(arr))
-    lim_inf = truncar_significatives(lim_inf, 3, cap_a = 'avall')
-    lim_sup = truncar_significatives(lim_sup, 3, cap_a = 'amunt')
-    return lim_inf, lim_sup
-
-def guardar_histograma_grans(zhist, carpzoom, mida_base, N, tipus, name): # Guarda els histogrames dels grans en la carpeta especificada.
-    gra_guardar = [r'Area ($\mu m^2$)', r'Eq. disc radius ($\mu m$)']
-    nom = ['Area', 'Radi']
-    px = mida_base[0] / N[0]
-    py = mida_base[1] / N[1]
-    grans, area_total, radi_eq = calculs_grans(zhist, [px, py])
-    dades = [area_total, radi_eq]
-    lims = [[0,0.4],[0,0.4]]
-    bins = 40, 40
-
-    # Carpeta principal
-    carp_hist = carpzoom / f"Histogrames - {name}"
-    carp_hist.mkdir(parents=True, exist_ok=True)
-
-    for i, valor_gra in enumerate(gra_guardar):
-        carpguardar = carp_hist / nom[i]
-        carpguardar.mkdir(parents=True, exist_ok=True)
-
-        guardar_histograma(dades[i], lims[i], carpguardar, tipus, name,
-                xtitle=valor_gra, nbins=bins[i])
-        if nom[i] == 'Area':
-            guardar_histograma(dades[i], lims[i], carpguardar, tipus, name,
-                xtitle=valor_gra, nbins=bins[i],weight = True)
         
 def calculs_grans(Z, p): # Calcula les estadístiques dels grans a partir de la matriu Z.
     px = p[0]; py = p[1]
@@ -177,32 +110,3 @@ def calcula_boxplot_ponderat(z, w, label): # Calcula les estadístiques del boxp
     }
 
     return stats
-    
-def save_boxplot_data(label, bp, i = 0):
-    data = {
-        'label': label,
-        'lower_whisker': bp['whiskers'][i * 2].get_ydata()[1],
-        'upper_whisker': bp['whiskers'][i * 2 + 1].get_ydata()[1],
-        'median': bp['medians'][i].get_ydata()[1],
-    }
-
-    # Mean
-    if 'means' in bp and len(bp['means']) > i:
-        data['mean'] = bp['means'][i].get_ydata()[1]
-    else:
-        data['mean'] = np.nan
-
-    # Quartils
-    box = bp['boxes'][i]
-
-    if hasattr(box, "get_ydata"):
-        y = box.get_ydata()
-        data['lower_quartile'] = y[1]
-        data['upper_quartile'] = y[2]
-
-    else:
-        verts = box.get_path().vertices[:, 1]
-        data['lower_quartile'] = np.min(verts)
-        data['upper_quartile'] = np.max(verts)
-
-    return data

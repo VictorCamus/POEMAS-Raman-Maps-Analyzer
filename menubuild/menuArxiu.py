@@ -4,7 +4,6 @@ from tkinter import filedialog, messagebox
 from matplotlib.pyplot import close
 
 from fileio import open_file, h5
-from process import statistics as stats
 from classes.file import FileData, FileView
 from .base import BaseMenu
 
@@ -19,8 +18,8 @@ class GestorArxiu(BaseMenu):  # Classe que gestiona les accions del menú "Arxiu
             ("Obrir fitxer", lambda: self._open_file(), '<Control-o>'),
             ("Obrir sessió", lambda: self._open_session(), '<Control-s>'),
             ("SEPARATOR"),
-            ("Guardar imatge i estadística", lambda: self.save_file(func = self._save), '<Control-g>'),
-            ("Guardar tots els fitxers oberts", lambda: self.save_file(func = self._save, tots = True), '<Control-Shift-G>'),
+            ("Guardar fitxer", lambda: self.save_file(func = self._save), '<Control-g>'),
+            ("Guardar tots els fitxers", lambda: self.save_file(func = self._save, tots = True), '<Control-Shift-G>'),
             ("Guardar sessió", lambda: self._save_session(), '<Control-Shift-S>'),
             ("SEPARATOR"),
             ("Tancar fitxer", lambda: self._close_file(), '<Control-t>'),
@@ -82,27 +81,11 @@ class GestorArxiu(BaseMenu):  # Classe que gestiona les accions del menú "Arxiu
         if not self.condicions_guardar(file): return False
         file.folder.mkdir(parents=True, exist_ok=True)
 
-        g = file.geometry
         map = file.view.map
 
         for channelKey, ch in file.channel.items():
             map.refresh_map(ch)
-
-            if amb_histograma:
-                x0, x1, y0, y1 = g.limit_pixels()
-                zhist = ch.Z[y0:y1, x0:x1].flatten()
-
-                if ch.name != 'GRAIN':
-                    stats.guardar_histograma(fig, ax, zhist, ch.lims, file.folder, channelKey, title=ch.ax_title)
-                else:
-                    stats.guardar_histograma_grans(zhist, file.folder, g.midaBase, g.N, ch.name, channelKey)
-
-            if not hasattr(file, 'mask'):
-                map.figure.savefig(f"{file.folder}/{channelKey}.png", bbox_inches='tight')
-            else:
-                mask_folder = file.folder / 'Màscares'
-                if not mask_folder.is_dir(): mask_folder.mkdir(parents=True, exist_ok=True)
-                map.figure.savefig(f"{file.folder}/Màscares/{channelKey}.png", bbox_inches='tight')
+            map.figure.savefig(f"{file.folder}/{channelKey}.png", bbox_inches='tight')
 
         h5.save(Path(f'{file.folder}.h5'), file)
         return True

@@ -2,12 +2,14 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from abc import ABC, abstractmethod
 import numpy as np
 from matplotlib.colors import TABLEAU_COLORS
+import matplotlib.font_manager
 
 from classes.objects import ProfilePlot
 from classes.interactions import MapInteraction
 from drawing import mapdraw
 from drawing.plots import base_plot
 from process import images as zoom
+from process.basics import find_nearest
 from window.headers import HeaderMap, HeaderSpec
 from window.footers import FooterMap, FooterSpec
 
@@ -99,7 +101,7 @@ class MapView(FigureView):
         if not ch: ch = self.channel
 
         mapdraw.update_map(self.image, ch.color.cmap, ch.Z, ch.lims, ch.units, mida=self.geometry.midaBase,
-                       colLims=ch.color.lims, cbar=self.cbar)
+                       colLims=ch.color.lims, cbar=self.cbar, mask = self.objects.mask)
         self.escala.color = ch.color.scale
         self.image.set_clim(*ch.lims)
         self.canvas.draw_idle()
@@ -150,11 +152,14 @@ class SpecView(FigureView):
 
         self.line, = self.axis.plot(spec.x, spec.y, color="b")
         self.bkgline, = self.axis.plot(spec.x, spec.bkg, color="tab:blue")
-        self.fitline = {}
+        self.fitline = dict()
+        self.etiquette = dict()
 
-        self.axis.set_title(f"X={spec.coords[1] + 1} Y={spec.coords[0] + 1}", fontsize=16, pad=10)
+        self.axis.set_title(f"X={spec.coords[1] + 1} Y={spec.coords[0] + 1}", fontsize=20, pad=10, fontname = 'Consolas')
         self.axis.set_xlim(spec.lims)
         self.axis.set_ylim(bottom=0)
+
+        self.header.view.fit = 'rawdata'
 
     def _connect(self):
         self.canvas.mpl_connect("key_press_event", lambda e: zoom.copy_figure(self.figure) if e.key == "ctrl+c" else None)
@@ -169,8 +174,9 @@ class SpecView(FigureView):
         colors = list(TABLEAU_COLORS.values())
         spec = self.channel.spectra
         view = self.header.view
+        bkg_on = view.widgets['bkg'].get()
 
-        if view.widgets["bkg"].get(): ydata = spec.y
+        if bkg_on: ydata = spec.y
         else:
             ydata = spec.y - self.bkg
             ydata[ydata < 0] = 0
@@ -178,9 +184,11 @@ class SpecView(FigureView):
         ytotal = 0
         fit_key = self.header.view.fit_key
 
-        for fitplot in self.fitline.values():
-            fitplot.remove()
-            self.fitline = {}
+        for fitplot in self.fitline.values(): fitplot.remove()
+        for etiq in self.etiquette.values(): etiq.remove()
+
+        self.fitline = dict()
+        self.etiquette = dict()
 
         if fit_key != 'rawdata':
             fit = spec.fits[fit_key]
@@ -191,6 +199,18 @@ class SpecView(FigureView):
                 if not peak.bkg:
                     yfit = peak.func(xfit, *(param[spec.coords] for param in peak.params.values()))
                     ytotal += yfit
+
+                    if 'x0' in peak.params:
+                        x0 = peak.params['x0'][spec.coords]
+                        idx = find_nearest(xfit, x0)
+
+                        ycoord = peak.params['A'][spec.coords] + bkg[idx] if bkg_on else peak.params['A'][spec.coords]
+                        self.etiquette[name] = self.axis.annotate(f'{peak.name}\n{x0:.2f}',
+                                                xy=(x0, ycoord),
+                                                xytext=(0, 10), textcoords='offset points', ha='center', color='k',
+                                                fontweight = 'bold', family='Consolas', fontsize = 14)
+
+                    for etiq in self.etiquette.values(): etiq.set_visible(self.header.view.widgets['etiq'].get())
 
                     if self.header.view.widgets['bkg'].get():
                         yfit += bkg
@@ -203,7 +223,7 @@ class SpecView(FigureView):
         self.line.set_ydata(ydata)
         self.bkgline.set_ydata(self.bkg)
 
-        top = int(1.1*np.nanmax(ydata[spec.xrange]))
+        top = int(1.25*np.nanmax(ydata[spec.xrange]))
         self.axis.set_ylim(top = top)
         view.widgets["top"].set(top)
 
