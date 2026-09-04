@@ -131,7 +131,10 @@ class SpecView(FigureView):
             xfit = spec.x[fit.xrange]
 
             for i, (name, peak) in enumerate(fit.peaks.items()):
-                if peak.bkg: bkg[fit.xrange] += peak.func(xfit, *(param[spec.coords] for param in peak.params.values()))
+                if peak.bkg:
+                    params = [param[spec.coords] for param in peak.params.values()]
+
+                    if not any(np.isnan(param) for param in params): bkg[fit.xrange] += peak.ydata(xfit, spec.coords)
 
         return bkg
 
@@ -197,7 +200,7 @@ class SpecView(FigureView):
 
             for i, (name, peak) in enumerate(fit.peaks.items()):
                 if not peak.bkg:
-                    yfit = peak.func(xfit, *(param[spec.coords] for param in peak.params.values()))
+                    yfit = peak.ydata(xfit, spec.coords)
                     ytotal += yfit
 
                     if 'x0' in peak.params:

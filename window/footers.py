@@ -93,6 +93,8 @@ class ViewFooterSpec:
             'track_x': Widget(key='track_x', var_type=str,
                               text=self.controller.spec.xlabels[self.channel.spectra.units], widget='entry', widget_kwargs={"state": 'readonly', "width": 10}),
             'track_y': Widget(key='track_y', var_type=str,
-                              text="Intensity (cts)", widget='entry', widget_kwargs={"state": 'readonly', "width": 10})}
+                              text="Intensity (cts)", widget='entry', widget_kwargs={"state": 'readonly', "width": 10}),
+            'laser': Widget(key='laser', var_type=str, init=self.controller.spec.model.controller.objects.laser,
+                           text='λ₀ (nm):', widget='entry', widget_kwargs={"state": 'readonly', "width": 10})}
 
         for i, widget in enumerate(self.widgets.values()): widget.add(self.frame, row = 0, col = 2*i + 1)

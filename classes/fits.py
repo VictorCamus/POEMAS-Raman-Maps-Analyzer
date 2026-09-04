@@ -1,13 +1,14 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from tkinter.ttk import LabelFrame, Label
 from tkinter import messagebox
 from matplotlib.colors import TABLEAU_COLORS
 from lmfit import Parameters, minimize
 import numpy as np
+from copy import deepcopy
 
 from window.widgets import Widget
 from window.builder import BaseWindow
-from process.mathfuncs import Functions, FuncParams, DEFAULT_PARAMS, linear_combination
+from process.mathfuncs import Functions, FuncParams, DEFAULT_PARAMS, linear_combination, INIT_PARAMS
 from process.basics import find_nearest
 
 @dataclass
@@ -17,7 +18,7 @@ class FitConfig:
 
 @dataclass
 class Peak:
-    ref: str = 'P1'
+    ref: str = ''
     name: str = ''
     function: str = 'Gaussiana'
     params: dict[str, dict] = field(default_factory=dict)
@@ -25,6 +26,8 @@ class Peak:
 
     def ydata(self, xdata):
         param_values = {name: par['value'] for name, par in self.params.items()}
+        if self.function in INIT_PARAMS: param_values = INIT_PARAMS[self.function](**param_values)
+
         return Functions[self.function](xdata, **param_values)
 
 @dataclass
@@ -35,9 +38,13 @@ class PeakResult:
     function: str = 'Gaussiana'
     bkg: bool = False
 
-    @property
-    def func(self):
-        return Functions[self.function]
+    def ydata(self, xdata, coords):
+        param_values = {name: par[coords] for name, par in self.params.items()}
+
+        if self.function in INIT_PARAMS:
+            param_values = INIT_PARAMS[self.function](**param_values)
+
+        return Functions[self.function](xdata, **param_values)
 
 @dataclass
 class FitResult:
@@ -49,27 +56,25 @@ class FitResult:
     r2: np.ndarray = None
 
 class FitSpec(BaseWindow):
-    def __init__(self, gestor, config=None):
-        self.config = config or FitConfig()
-
+    def __init__(self, gestor):
         super().__init__(gestor, "Ajust espectral")
 
         self.window.protocol("WM_DELETE_WINDOW", self.close_window)
         self.main_frame.pack_configure(fill=None, expand=False)
         self.control_frame.pack_configure(side = 'top', anchor='w')
         self.peaks = {}
+        self.peaks_frame = {}; self.peaks_widgets = {}
         self.spec = self.file.view.spectrum
 
         if not 'All' in self.spec.fitline: self.spec.fitline['All'], = self.spec.axis.plot(self.xdata, np.full_like(self.xdata, 0), color = 'k')
-        self.peaks_frame = LabelFrame(self.main_frame)
-        self.peaks_frame.pack(side = 'bottom', fill='both', expand=True, pady = 2)
+        self.fit_frame = LabelFrame(self.main_frame)
+        self.fit_frame.pack(side = 'bottom', fill='both', expand=True, pady = 2)
 
         if self.spec.header.view.fit_key != 'rawdata':
-            fit = self.channel.spectra.fits[self.spec.header.view.fit_key]
-            self.config = fit.config
-            self.widgets['name'].set(self.config.name)
+            config = deepcopy(self.channel.spectra.fits[self.spec.header.view.fit_key].config)
+            self.widgets['name'].set(config.name)
 
-            for peak in self.config.peaks.values():
+            for peak in config.peaks.values():
                 self._add_peak(peak = peak)
 
         layout = [(0, 1, 'name'), (0, 3, 'add'),    (0, 4, 'fit'),
@@ -114,13 +119,13 @@ class FitSpec(BaseWindow):
         i = len(self.peaks)
 
         if peak is None:
-            peak = Peak(name=f'P{i + 1}')
+            peak = Peak(ref = f'P{i + 1}', name=f'P{i + 1}')
             peak.params = {name: DEFAULT_PARAMS[name].copy() for name in FuncParams[peak.function]}
 
         row = i % 3
         col = i // 3
 
-        frame = LabelFrame(self.peaks_frame)
+        frame = LabelFrame(self.fit_frame)
         frame.grid(row=row, column=col, padx=5, pady=5, sticky='nw')
 
         widgets = {
@@ -136,13 +141,13 @@ class FitSpec(BaseWindow):
                    text = 'Fons:', widget='checkbutton',
                    setter = self.update_bkg, setter_kwargs = {'peak': peak})}
 
-        peak.frame = frame
-        peak.widgets = widgets
+        self.peaks_frame[peak.ref] = frame
 
         # Afegim nom i funció
         widgets['name'].add(frame, row=0, col=0)
         widgets['function'].add(frame, row=0, col=1)
         widgets['bkg'].add(frame, row=0, col=2)
+        self.peaks_widgets[peak.ref] = widgets
 
         # Capçalera dels paràmetres
         Label(frame, text='Value').grid(row=1, column=1)
@@ -154,7 +159,6 @@ class FitSpec(BaseWindow):
             parameter = peak.params[name]
             self._add_parameter_widgets(peak, parameter, name, row)
 
-        peak.ref = f'P{i+1}'
         if new:
             self.spec.fitline[peak.ref] = self.spec.axis.fill_between(self.xdata, peak.ydata(self.xdata), self.bkg, color=colors[len(self.spec.fitline)], alpha=0.6)
 
@@ -168,10 +172,12 @@ class FitSpec(BaseWindow):
                                                           xytext=(0, 10), textcoords='offset points', ha='center',
                                                           color='k',
                                                           fontweight='bold', family='Consolas', fontsize=14)
+
         self.peaks[peak.ref] = peak
 
     def _add_parameter_widgets(self, peak, parameter, name, row):
-        widgets = peak.widgets
+        frame = self.peaks_frame[peak.ref]
+        widgets = self.peaks_widgets[peak.ref]
         widgets[f'{name}_value'] = Widget(key=f'value', var_type=float, init=parameter['value'],
                                    text=f'{name}:', widget='entry', widget_kwargs={'width': 10},
                                    setter = self.update_value, setter_kwargs = {'peak': peak, 'par': name})
@@ -188,10 +194,10 @@ class FitSpec(BaseWindow):
                                  widget='checkbutton',
                                  setter = parameter, mode = 'dict')
 
-        widgets[f'{name}_value'].add(peak.frame, row=row, col=0)
-        widgets[f'{name}_min'].add(peak.frame, row=row, col=2)
-        widgets[f'{name}_max'].add(peak.frame, row=row, col=3)
-        widgets[f'{name}_vary'].add(peak.frame, row=row, col=4)
+        widgets[f'{name}_value'].add(frame, row=row, col=0)
+        widgets[f'{name}_min'].add(frame, row=row, col=2)
+        widgets[f'{name}_max'].add(frame, row=row, col=3)
+        widgets[f'{name}_vary'].add(frame, row=row, col=4)
 
     def update_func(self, func, peak):
         old_params = peak.params
@@ -246,13 +252,13 @@ class FitSpec(BaseWindow):
         self.spec.canvas.draw_idle()
 
     def _rebuild_peak_widgets(self, peak):
-        for key in list(peak.widgets.keys()):
+        widget = self.peaks_widgets[peak.ref]
+        for key in list(widget.keys()):
             if key in ('name', 'function', 'bkg'): continue
 
-            widget = peak.widgets[key]
-            if hasattr(widget, 'label'): widget.label.destroy()
-            widget.widget.destroy()
-            del peak.widgets[key]
+            if hasattr(widget[key], 'label'): widget[key].label.destroy()
+            widget[key].widget.destroy()
+            del widget[key]
 
         for row, name in enumerate(FuncParams[peak.function], start=2):
             self._add_parameter_widgets(peak, peak.params[name], name, row)
@@ -281,7 +287,9 @@ class FitSpec(BaseWindow):
             self.spec.etiquette[peak.ref].remove()
             self.spec.etiquette.pop(peak.ref)
 
-        peak.frame.destroy()
+        self.peaks_frame[peak.ref].destroy()
+        self.peaks_frame.pop(peak.ref)
+        self.peaks_widgets.pop(peak.ref)
 
         for key, item in self.peaks.items():
             if item is peak:
@@ -331,23 +339,24 @@ class FitSpec(BaseWindow):
 
         for i in range(spectra.shape[0]):
             for j in range(spectra.shape[1]):
-
                 if not self.file.objects.mask[i, j]: continue
 
                 ydata = spectra[i, j][self.xrange] - bkg[i, j][self.xrange]
                 result = self._fit(self.xdata, ydata, model, params)
 
+
                 if result is None:
                     params = init_params.copy()
                     continue
 
-                params = result.params
-                yfit = model(self.xdata, params)
+                yfit = model(self.xdata, result.params)
                 r2 = self._r2(ydata, yfit)
 
-                if not result.success or any(p.stderr is None for p in params.values()):
+                if not result.success or any(p.stderr is None for p in result.params.values()) or r2 < 0.5:
                     params = init_params.copy()
                     continue
+
+                params = result.params
 
                 for name, peak in self.peaks.items():
                     for par_name in peak.params:
@@ -377,7 +386,7 @@ class FitSpec(BaseWindow):
             return model(x, params) - y
 
         try:
-            return minimize(residual, params, method="least_squares", diff_step=1e-4, max_nfev=500)
+            return minimize(residual, params, method="least_squares", diff_step=1e-4)
 
         except (ValueError, RuntimeError) as e:
             return None
@@ -395,10 +404,10 @@ class FitSpec(BaseWindow):
         self.spec.fitline['All'].set_ydata(y)
         self.spec.canvas.draw_idle()
 
-        for name, peak in self.peaks.items():
+        for ref, peak in self.peaks.items():
             for par_name, par in peak.params.items():
-                par['value'] = round(params[f'{name}_{par_name}'].value, 3)
-                peak.widgets[f'{par_name}_value'].set(par['value'])
+                par['value'] = round(params[f'{ref}_{par_name}'].value, 3)
+                self.peaks_widgets[ref][f'{par_name}_value'].set(par['value'])
 
         for peak in self.peaks.values():
             self.update_peak(peak)
@@ -408,7 +417,6 @@ class FitSpec(BaseWindow):
 
     def _fitdata(self, value = None):
         model, init_params = self._init_fit()
-
         spectra = self.channel.spectra.y
         bkg = self.channel.spectra.bkg
 
@@ -423,22 +431,22 @@ class FitSpec(BaseWindow):
             return
 
         yfit = model(self.xdata, result.params)
-
         r2 = self._r2(ydata, yfit)
         self._draw_fit(yfit, result.params, r2)
 
     def get_config(self):
         config = FitConfig(name=self.widgets['name'].get())
 
-        for peak in self.peaks.values():
-            peak.name = peak.widgets['name'].get()
-            peak.function = peak.widgets['function'].get()
+        for ref, peak in self.peaks.items():
+            widget = self.peaks_widgets[ref]
+            peak.name = widget['name'].get()
+            peak.function = widget['function'].get()
 
             for parameter, data in peak.params.items():
-                data['value'] = peak.widgets[f'{parameter}_value'].get()
-                data['min'] = peak.widgets[f'{parameter}_min'].get()
-                data['max'] = peak.widgets[f'{parameter}_max'].get()
-                data['vary'] = peak.widgets[f'{parameter}_vary'].get()
+                data['value'] = widget[f'{parameter}_value'].get()
+                data['min'] = widget[f'{parameter}_min'].get()
+                data['max'] = widget[f'{parameter}_max'].get()
+                data['vary'] = widget[f'{parameter}_vary'].get()
 
             config.peaks[peak.name] = peak
 
@@ -463,9 +471,10 @@ class FitSpec(BaseWindow):
         return params
 
     def _create_widgets(self):
+        name = f'Fit{len(self.channel.spectra.fits) + 1}'
 
         self.widgets = {
-            'name': Widget(key='name', var_type=str, init=self.config.name,
+            'name': Widget(key='name', var_type=str, init=name,
                     text='Nom:', widget='entry', widget_kwargs = {'width': 10}),
 
             'r2': Widget(key='r2', var_type=float, init='',

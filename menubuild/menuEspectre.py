@@ -93,6 +93,7 @@ class Fons(BaseWindow):
         self.widgets["percentile"].config(state = 'disabled')
         self.widgets["spline"].config(state='disabled')
         self.bkg = np.full(self.xdata.shape, np.nan)
+        bkg_value = np.full_like(self.xrange, np.nan)
 
         match value:
             case 'nan': pass

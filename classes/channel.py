@@ -5,7 +5,6 @@ from typing import Dict
 
 from classes.fits import FitResult
 from process.basics import set_lims, find_nearest
-from CCD.correction import ccd_correct
 
 @dataclass
 class ChannelData:  # Crea canals per a cada tipus de mapa dins d'un fitxer.
@@ -38,6 +37,8 @@ class SpecData:
     bkgdata: np.ndarray = None
     units: str = None
     lims: list[float] = None
+    CCD: np.ndarray = None
+    CCD_active: bool = False
     coords: tuple[int] = (0, 0)
     fits: Dict[str, FitResult] = field(default_factory = dict)
 
@@ -60,10 +61,14 @@ class SpecData:
         return slice(left_index, right_index)
 
     def __post_init__(self):
-        # self.spectra = ccd_correct(self.xdata, self.spectra)
-
-        if self.lims is None: self.lims = [round(self.x[0], 3), round(self.x[-1], 3)]
+        if self.lims is None: self.lims = [round(min(self.x), 3), round(max(self.x), 3)]
         if self.bkgdata is None: self.bkgdata = np.zeros_like(self.ydata)
+        if self.CCD is None:
+            with open('process/CCD.csv', encoding='utf-8') as f:
+                data = np.loadtxt((line.replace(',', '.') for line in f), delimiter=' ', usecols=(0, 1))
+
+            left = data[0, 1]; right = data[-1, 1]
+            self.CCD = np.interp(self.xdata['nm'], data[:, 0], data[:, 1], left= left, right=right)
 
 @dataclass
 class Colors:

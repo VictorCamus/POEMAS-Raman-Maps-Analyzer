@@ -82,7 +82,7 @@ class HeaderMap:
     def on_col_inf_change(self, value):
         self.channel.color.limInf = value
         self._redraw(cmap = True)
-        
+
     def _redraw(self, cmap = False, lims = False):
         ch = self.channel
 
@@ -201,13 +201,13 @@ class HeaderSpec:
         self.channel.spectra.lims[0] = value
         self.spec.axis.set_xlim(self.channel.spectra.lims)
         self.spec.canvas.draw_idle()
-        if self.view.fit_key == 'rawdata': self._update_map(self.channel)
+        self._update_map(self.channel)
 
     def on_spectra_right_change(self, value):
         self.channel.spectra.lims[1] = value
         self.spec.axis.set_xlim(self.channel.spectra.lims)
         self.spec.canvas.draw_idle()
-        if self.view.fit_key == 'rawdata': self._update_map(self.channel)
+        self._update_map(self.channel)
 
     def on_spectra_bottom_change(self, value):
         self.spec.axis.set_ylim(value, self.view.widgets['top'].get())
@@ -233,7 +233,7 @@ class HeaderSpec:
         self.spec.footer.view.widgets['track_x'].label.config(text = self.spec.xlabels[value])
         self.spec.canvas.draw_idle()
 
-        if self.view.fit_key == 'rawdata': self._update_map(self.channel)
+        self._update_map(self.channel)
 
     def on_data_change(self, value):
         if not hasattr(self.spec, 'line'): return
@@ -261,7 +261,7 @@ class HeaderSpec:
 
         self.spec.canvas.draw_idle()
 
-        if self.view.fit_key == 'rawdata': self._update_map(self.channel)
+        self._update_map(self.channel)
 
     def on_etiq_change(self, value):
         for etiq in self.spec.etiquette.values(): etiq.set_visible(value)
@@ -273,6 +273,16 @@ class HeaderSpec:
 
         self.channel.spectra.fits.pop(self.view.fit_key)
         self.view.update_fits()
+
+    def on_ccd_change(self, value):
+        spectra = self.channel.spectra
+        spectra.CCD_active = value
+
+        if value: spectra.ydata = (spectra.ydata - spectra.bkgdata) / spectra.CCD + spectra.bkgdata
+        else: spectra.ydata = (spectra.ydata - spectra.bkgdata) * spectra.CCD + spectra.bkgdata
+
+        self._update_map(self.channel)
+        self.spec.plot_data()
 
     def _redraw(self):
         ch = self.channel
@@ -287,11 +297,13 @@ class HeaderSpec:
 
         map.header.view.widgets['limInf'].set(ch.lims[0])
         map.header.view.widgets['limSup'].set(ch.lims[1])
-        map.header.view.widgets['cmap_c'].set(ch.color.cmap)
+        map.header.view.widgets['cmap_c'].set(ch.color.cmap_c)
 
         map.canvas.draw_idle()
 
     def _update_map(self, channel):
+        if self.view.fit_key != 'rawdata': return
+
         spectra = channel.spectra
 
         lim_inf, lim_sup = spectra.lims
@@ -346,9 +358,9 @@ class ViewHeaderSpec:
             self.widgets['units'].config(state = 'disabled')
 
             start, stop = round(spec.x[self.fit.xrange.start], 3), round(spec.x[self.fit.xrange.stop], 3)
-            spec.lims = [start, stop]
-            self.widgets['left'].set(start)
-            self.widgets['right'].set(stop)
+            spec.lims = [start, stop] if start < stop else [stop, start]
+            self.widgets['left'].set(spec.lims[0])
+            self.widgets['right'].set(spec.lims[1])
 
             self.controller.spec.axis.set_xlim(spec.lims)
 
@@ -490,8 +502,9 @@ class ViewHeaderSpec:
         self.parameter_key = None
 
         self.widgets = {
-            'laser': Widget(key='laser', var_type=str, init=self.controller.spec.model.controller.objects.laser,
-                     text='λ₀ (nm):', widget='entry', widget_kwargs={"state": 'readonly', "width": 10}),
+            'units': Widget(key="units", var_type=str, init=self.channel.spectra.units,
+                            text="Unitats", widget='cb', widget_kwargs={"options": ["nm", "eV", "1/cm"], "width": 8},
+                            setter=self.controller.on_units_change),
 
             'left':  Widget(key="left", var_type=float, init=self.channel.spectra.lims[0],
                      text="Eix X", widget='entry', widget_kwargs={"width": 10},
@@ -509,9 +522,9 @@ class ViewHeaderSpec:
                           text="Log Y:", widget='checkbutton',
                           setter=self.controller.on_log_change),
 
-            'units': Widget(key="units", var_type=str, init=self.channel.spectra.units,
-                     text="Unitats", widget='cb', widget_kwargs={"options": ["nm", "eV", "1/cm"], "width": 8},
-                     setter = self.controller.on_units_change),
+            'fit': Widget(key='fit', var_type=str, init=self.fit,
+                          text='Ajusts:', widget='cb', widget_kwargs={'options': opts_fits, 'width': 8},
+                          setter=self, mode='attr'),
 
             'bottom': Widget(key = "bottom", var_type = float, init = 0,
                       text = "Eix Y", widget = 'entry', widget_kwargs = {"width": 10},
@@ -529,10 +542,6 @@ class ViewHeaderSpec:
                      text = "Etiquetes:", widget = 'checkbutton',
                      setter=self.controller.on_etiq_change),
 
-            'fit': Widget(key='fit', var_type=str, init=self.fit,
-                          text='Ajusts:', widget='cb', widget_kwargs={'options': opts_fits, 'width': 8},
-                          setter=self, mode='attr'),
-
             'peak': Widget(key='peak', var_type=str, init=self.peak,
                            text='Pic:', widget='cb', widget_kwargs={'options': opts_peaks, 'width': 8},
                            setter=self, mode='attr'),
@@ -541,11 +550,15 @@ class ViewHeaderSpec:
                                 text='Paràmetre:', widget='cb', widget_kwargs={'options': opts_pars, 'width': 8},
                                 setter=self, mode='attr'),
 
-            'del_fit': Widget(key='del_fit', var_type=str, init='Eliminar ajust',
-                              widget='button', setter=self.controller.delete_fit)}
+            'del_fit': Widget(key='del_fit', var_type=str, init='Eliminar',
+                              widget='button', setter=self.controller.delete_fit),
 
-        layout = [(0, 1, 'laser'), (0, 3, 'left'),   (0, 5, 'right'), (0, 6, 'data'), (0, 8, 'log'),
-                  (1, 1, 'units'), (1, 3, 'bottom'), (1, 5, 'top'),   (1, 6, 'bkg'),  (1, 8, 'etiq'),
-                  (2, 1, 'fit'),   (2, 3, 'peak'),   (2 ,5, 'parameter'),             (2, 8, 'del_fit')]
+            'CCD':  Widget(key = "CCD", var_type = bool, init = self.channel.spectra.CCD_active,
+                     text = "CCD:", widget = 'checkbutton',
+                     setter=self.controller.on_ccd_change)}
+
+        layout = [(0, 1, 'units'), (0, 3, 'left'),        (0, 5, 'right'),   (0, 6, 'data'), (0, 8, 'log'),
+                  (1, 1, 'fit'),   (1, 3, 'bottom'),      (1, 5, 'top'),     (1, 6, 'bkg'),  (1, 8, 'etiq'),
+                  (2, 1, 'peak'),  (2, 3, 'parameter'),   (2 ,5, 'del_fit'), (2, 6, 'CCD')]
 
         for row, col, key in layout: self.widgets[key].add(self.frame, row, col)
