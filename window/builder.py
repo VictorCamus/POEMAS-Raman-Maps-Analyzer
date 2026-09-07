@@ -9,7 +9,7 @@ from process.images import copy_figure
 
 class BaseWindow:
     def __init__(self, gestor, title):
-        self._file, self._channel = gestor.element_obert()
+        self._file, self._channel = gestor.current_file, gestor.current_file.current_channel
         self.files = gestor.files
 
         self.notebook = gestor.notebook
@@ -26,7 +26,6 @@ class BaseWindow:
         self.window.resizable(False, False)
 
         self.window.transient(gestor.root)
-        self.window.lift()
         self.window.focus_force()
 
         self.main_frame = Frame(self.window)
@@ -218,20 +217,18 @@ class BaseMapWindow(BaseWindow):
         self.cbar.limSup.set_text(f'{self.lims[1]} {self.units}')
         self.canvas.draw_idle() 
         
-    def aplicar(self, value):
-        ch = self.file.channel[self.widgets['channel'].get()]
+    def aplicar(self, value = None, file = None):
+        if file is None: file = self.file
+        if not self.widgets['channel'].get() in list(file.channel): return
+
+        ch = file.channel[self.widgets['channel'].get()]
         ch.Z = self.z
         ch.lims = self.lims
-        current_chframe = self.file.view.selector.select()
+        current_chframe = file.view.selector.select()
 
-        self.notebook.select(self.file.view.tab)
-        self.file.view.selector.select(ch.tab)
-        
         if current_chframe == str(ch.tab):
-            self.file.view.map.header.set_channel(ch)
-            self.file.view.map.refresh_map()
-
-        self.update_fig()
+            file.view.map.header.set_channel(ch)
+            file.view.map.refresh_map()
 
 class BaseFigureWindow(BaseWindow):
     def __init__(self, gestor, nom, dim=(4,4)):

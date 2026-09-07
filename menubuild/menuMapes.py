@@ -3,7 +3,7 @@ import numpy as np
 from tkinter import messagebox
 from classes import ChannelData
 from .base import BaseMenu
-from window import BaseWindow
+from window import BaseWindow, BaseMapWindow
 from process.shiftphase import cross_correlation_shift
 from window.widgets import create_tab, Widget
 
@@ -16,6 +16,7 @@ class GestorMapes(BaseMenu): # Classe que gestiona les accions relacionades amb 
     def registrar_menu(self, menu):
         accions = [
             ("Sincronitzar límits", lambda: self.lims_sync(), None),
+            ('Afegir llindar', lambda: Llindar(self)),
             ("Operar amb canals", lambda: OperarMaps(self), None),
             ("Ajustar mapes desplaçats", lambda: ShiftMaps(self), None),
             ("SEPARATOR"),
@@ -31,6 +32,49 @@ class GestorMapes(BaseMenu): # Classe que gestiona les accions relacionades amb 
             for f in self.files.values():
                 if f is file: continue
                 if key in f.channel: f.channel[key].lims = np.copy(channel.lims)
+
+class Llindar(BaseMapWindow):
+    def __init__(self, gestor):
+        super().__init__(gestor, "Calcular fons")
+
+        self.z = self.channel.Z.copy()
+        self.mask = np.ones_like(self.z, dtype=bool)
+
+    def threshold(self, value):
+        inf, sup = self.widgets['thrInf'].get(), self.widgets['thrSup'].get()
+
+        self.mask = (self.z >= inf) & (self.z <= sup)
+        self.update_fig(mask = self.mask)
+
+    def apply_threshold(self, value):
+        self.file.objects.mask = self.mask
+        self.channel.Z = self.z
+        self.file.view.map.refresh_map()
+
+    def _create_widgets(self):
+        files = list(self.files.keys())
+        channels = list(self.file.channel.keys())
+
+        self.widgets = {
+            "file": Widget(key="file", var_type=str, init=self.file.name,
+                           text="Arxiu:", widget="cb", widget_kwargs={"options": files},
+                           setter=self.file_changed),
+
+            "channel": Widget(key="channel", var_type=str, init=self.channel.name, text="Canal:",
+                              widget="cb", widget_kwargs={"options": channels}, setter=self.channel_changed),
+
+            "thrInf": Widget(key="bkg", var_type=float, init=round(np.min(self.channel.Z), 3),
+                       text="Llindar inferior:", widget="entry",
+                       setter=self.threshold),
+
+            "thrSup": Widget(key="thrSup", var_type=float, init=round(np.max(self.channel.Z), 3),
+                          text="Llindar superior:", widget="entry",
+                          setter=self.threshold),
+
+            "apply": Widget(key="apply", var_type=str, init='Aplicar',
+                       text = "Aplicar", widget = 'button',
+                       setter = self.apply_threshold)
+            }
 
 class OperarMaps(BaseWindow):
     def __init__(self, gestor):

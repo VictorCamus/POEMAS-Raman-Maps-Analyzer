@@ -49,7 +49,7 @@ def update_map(image, cmap, Z, lims, units,
     if mida is not None: image.set_extent([0, mida[0], 0, mida[1]])
     if cbar: update_cbar(cbar, lims, units = units, colors = colLims) # Barra de colors.
 
-def update_data(image, data, mask):
+def update_data(image, data, mask = None):
     if mask is not None: Z = np.ma.masked_where(~mask, data)
     else: Z = data.copy()
 

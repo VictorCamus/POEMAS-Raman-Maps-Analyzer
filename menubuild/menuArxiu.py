@@ -16,37 +16,38 @@ class GestorArxiu(BaseMenu):  # Classe que gestiona les accions del menú "Arxiu
     def registrar_menu(self, menu): # Registra les accions del menú "Arxiu" a l'aplicació.
         accions = [
             ("Obrir fitxer", lambda: self._open_file(), '<Control-o>'),
-            ("Obrir sessió", lambda: self._open_session(), '<Control-s>'),
+            ("Obrir sessió", lambda: self._open_session(), '<Control-Shift-O>'),
             ("SEPARATOR"),
             ("Guardar fitxer", lambda: self.save_file(func = self._save), '<Control-g>'),
             ("Guardar tots els fitxers", lambda: self.save_file(func = self._save, tots = True), '<Control-Shift-G>'),
-            ("Guardar sessió", lambda: self._save_session(), '<Control-Shift-S>'),
+            ("Guardar sessió", lambda: self._save_session(), '<Control-s>'),
             ("SEPARATOR"),
             ("Tancar fitxer", lambda: self._close_file(), '<Control-t>'),
             ("Eixir", self.root.quit, '<Escape>'),
         ]
         
         self.create_menu("Arxiu", menu, accions)  # Crida a la funció comuna d'afegir menú
-    
+
     def _open_file(self): # Obre un fitxer AIST i carrega les dades en el notebook.
-        filepaths = filedialog.askopenfilenames(filetypes = [("H5", "*.h5"), ("AIST", "*.aist"), ("WSxM", ["*.top", "*.Auxfeed"]), ("XYZ", "*.xyz"), ("TXTRAMAN", "*.txt")])
+        filepaths = filedialog.askopenfilenames(
+                    filetypes = [("H5", "*.h5"), ("AIST", "*.aist"), ("WSxM", ["*.top", "*.Auxfeed"]),
+                                 ("TXTRAMAN", "*.txt")])
 
         if not filepaths: return
-        
+
         self.label_inici.place_forget()
         groups = defaultdict(list)
-        
+
         for fp in filepaths:
             fp = Path(fp)
             format = fp.suffix
 
             match format:
-                case '.xyz': base, _ = fp.stem.rsplit(' - ', 1)
-                case '.top' | '.Auxfeed': 
+                case '.top' | '.Auxfeed':
                     base = fp.name.split('.', 1)[0]
                     format = '.wsxm'
                 case _: base = fp.stem
-            
+
             groups[base].append(fp)
 
         for filename, files in groups.items():
@@ -54,7 +55,7 @@ class GestorArxiu(BaseMenu):  # Classe que gestiona les accions del menú "Arxiu
             self._add_file(filename, file, files[0].parent)
 
     def _open_session(self):  # Obre un fitxer AIST i carrega les dades en el notebook.
-        filepath = filedialog.askopenfilename(filetypes=[("HDF5", "*.hdf5")])
+        filepath = filedialog.askopenfilename(filetypes=[("Sessió", "*.hdf5")])
         if not filepath: return
 
         filepath = Path(filepath)
@@ -77,7 +78,7 @@ class GestorArxiu(BaseMenu):  # Classe que gestiona les accions del menú "Arxiu
 
         if self.current_file is None: self.set_file(file)
 
-    def _save(self, file, fig, ax, amb_histograma=True):  # Guarda les dades de totes les pestanyes obertes en fitxers.
+    def _save(self, file):  # Guarda les dades de totes les pestanyes obertes en fitxers.
         if not self.condicions_guardar(file): return False
         file.folder.mkdir(parents=True, exist_ok=True)
 
@@ -87,6 +88,7 @@ class GestorArxiu(BaseMenu):  # Classe que gestiona les accions del menú "Arxiu
             map.refresh_map(ch)
             map.figure.savefig(f"{file.folder}/{channelKey}.png", bbox_inches='tight')
 
+        map.refresh_map(file.current_channel)
         h5.save(Path(f'{file.folder}.h5'), file)
         return True
     

@@ -1,8 +1,8 @@
 import threading
-from tkinter import Menu, messagebox, Toplevel, Label
-from tkinter.ttk import Frame, Progressbar
+from tkinter import Menu, messagebox
 from matplotlib.pyplot import close
 
+from window.widgets import Progress
 from drawing.plots import base_plot
 
 class Condicions: # Mixin per a comprovar condicions abans d'executar accions.
@@ -55,11 +55,6 @@ class BaseMenu(Condicions):  # Classe base per a gestionar les accions comunes d
     @property
     def current_file(self):
         return self.get_file()
-
-    def element_obert(self):
-        file = self.current_file
-        channel = file.current_channel if file else None
-        return file, channel
     
     def create_menu(self, etiqueta, menu, accions):
         submenu = Menu(menu, tearoff=0, font=('Helvetica', 12, 'bold'), bg='#2b2b2b', fg='#eeeeee', activebackground='#3a7ff6', activeforeground='#ffffff')
@@ -82,48 +77,26 @@ class BaseMenu(Condicions):  # Classe base per a gestionar les accions comunes d
         menu.add_cascade(label=etiqueta, menu=submenu)
 
     def save_file(self, func, tots=False):
-        if not self.comprova_fitxer(): return
+        if not self.comprova_fitxer():
+            return
 
-        win = Toplevel(self.root)
-        win.title("Guardant arxius")
-        win.geometry("400x120")
+        if tots:
+            files = list(self.files.values())
+        else:
+            files = [self.current_file]
 
-        label = Label(win, text="Preparant...", font=("Arial", 12))
-        label.pack(pady=10)
+        progress = Progress(self.root, title="Guardant arxius", maximum=len(files))
+        threading.Thread(target=self._save_thread, args=(func, files, progress), daemon=True).start()
 
-        frame_barra = Frame(win)
-        frame_barra.pack(fill="x", padx=20, pady=10)
-
-        progress = Progressbar(frame_barra, style="Green.Horizontal.TProgressbar", mode="determinate")
-        progress.pack(side="left", fill="x", expand=True)
-
-        percent_label = Label(frame_barra, text="0 %", width=5)
-        percent_label.pack(side="right", padx=(10,0))
-
-        if tots: files = list(self.files.values())
-        else: files = [self.current_file]
-
-        progress["maximum"] = len(files)
-
-        threading.Thread(target=lambda: self._save_thread(func, files, win, label, percent_label, progress), daemon=True).start()
-        
-    def _save_thread(self, func, files, win, label, percent_label, progress):
-        fig, ax = base_plot('', '', dim=(5,3))
+    def _save_thread(self, func, files, progress):
+        fig, ax = base_plot('', '', dim=(5, 3))
 
         for i, f in enumerate(files, start=1):
-            self.root.after(0, lambda f=f: label.config(text=f"Guardant: {f.name}"))
-            result = func(f, fig, ax)
-            if not result:
-                break
+            if not func(f): break
 
-            percent = int((i / progress["maximum"]) * 100)
+            progress.update(i, text=f"Guardant: {f.name}")
 
-            self.root.after(0, lambda i=i, percent=percent: (
-                progress.config(value=i),
-                percent_label.config(text=f"{percent} %")
-            ))
+        progress.finish()
 
-        label.config(text="Finalitzat ✔")
-        win.after(500, win.destroy)
-        self.current_file.view.map.refresh_map()
+        self.root.after(0, self.current_file.view.map.refresh_map)
         close(fig)

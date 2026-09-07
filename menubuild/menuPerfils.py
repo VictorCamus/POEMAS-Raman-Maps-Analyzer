@@ -54,12 +54,8 @@ class GestorPerfils(BaseMenu):  # Classe que gestiona les accions relacionades a
 
     def _add_prf(self): # Afegeix un perfil de fletxa a la pestanya actual.
         if not self.comprova_fitxer(): return
-        file, channel = self.element_obert()
+        file = self.current_file
         map = file.view.map
-
-        if channel.name == 'Grain':
-            messagebox.showinfo("Informació", "No dibuixeu perfils sobre la pestanya GRAIN.")
-            return
 
         num = len(file.objects.profiles)
 
