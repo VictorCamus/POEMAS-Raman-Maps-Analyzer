@@ -102,6 +102,10 @@ class LevelMaps(BaseMapWindow):
             "apply": Widget(key="apply", var_type=str, init="Aplicar",
                      widget="button",
                      setter=self.aplicar),
+
+            "apply_all": Widget(key="apply_all", var_type=str, init="Aplicar a tots els fitxers",
+                            widget="button",
+                            setter=self.aplicar_fitxers),
         }
 
     def on_file_changed(self, value):
@@ -124,10 +128,18 @@ class LevelMaps(BaseMapWindow):
         self._direction = value
         self.apply_all()
 
-    def apply_all(self):
-        ch = self.file.channel[self.widgets['channel'].get()]
+    def apply_all(self, file = None):
+        update = False
+
+        if file is None:
+            file = self.file
+            update = True
+
+        if self.widgets['channel'].get() not in list(file.channel.keys()): return
+
+        ch = file.channel[self.widgets['channel'].get()]
         z = ch.Z.copy()
-        npixels = self.file.geometry.N
+        npixels = file.geometry.N
         
         # --- LEVEL ---
         match self._level_mode:
@@ -150,4 +162,12 @@ class LevelMaps(BaseMapWindow):
         # --- FINAL ---
 
         self.lims, self.z = set_lims(ch.name, z)
-        self.update_fig()
+        if update: self.update_fig()
+
+    def aplicar_fitxers(self, value):
+        curr_file = self.file
+        for file in self.files.values():
+            self.apply_all(file = file)
+            self.aplicar(file = file)
+
+        self.apply_all(file = curr_file)
