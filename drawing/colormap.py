@@ -34,12 +34,12 @@ cmaps_matplotlib = [
     "turbo",
 
     # Sequential
-    "Greys",
-    "Purples",
-    "Blues",
-    "Greens",
-    "Oranges",
-    "Reds",
+    "greys",
+    "purples",
+    "blues",
+    "greens",
+    "oranges",
+    "reds",
 
     # Sequential multi-color
     "YlGn",
@@ -287,6 +287,23 @@ def load_colormaps(): # Crea els colormaps personalitzats a partir dels canals d
     matplotlib.colormaps.register(cmap=plt.get_cmap('plasma_r'), name='Phase_r', force=True)
     matplotlib.colormaps.register(cmap=plt.get_cmap('viridis'), name='Cond', force=True)
     matplotlib.colormaps.register(cmap=plt.get_cmap('viridis_r'), name='Cond_r', force=True)
+
+    # Sequential
+    sequential = [
+        "Greys",
+        "Purples",
+        "Blues",
+        "Greens",
+        "Oranges",
+        "Reds",
+    ]
+
+    # Register inverted standard colormaps under their normal names
+    for name in sequential:
+        cmap = matplotlib.colormaps[name]
+        cmap_r = matplotlib.colormaps[name].reversed()
+        matplotlib.colormaps.register(cmap=cmap_r, name=name.lower(), force=True)
+        matplotlib.colormaps.register(cmap=cmap, name=f'{name.lower()}_r', force=True)
 
     # Custom ListedColormap
     grain_cmap = ListedColormap(['black', 'tab:orange'], name='Grain')
