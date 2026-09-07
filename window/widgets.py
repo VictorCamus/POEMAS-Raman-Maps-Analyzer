@@ -1,9 +1,9 @@
-from tkinter.ttk import Label, Combobox, Frame
-from tkinter import Entry, Label, Scale, messagebox, StringVar, DoubleVar, BooleanVar, Variable, Toplevel, Button, Radiobutton, Checkbutton
+from tkinter.ttk import Label, Combobox, Frame, Progressbar
+from tkinter import Entry, Label, Scale, messagebox, StringVar, DoubleVar, IntVar, BooleanVar, Variable, Toplevel, Button, Radiobutton, Checkbutton
 from matplotlib import colors as mcolors
 from functools import partial
-
 from typing import Callable, Any, Literal
+import threading
 
 class ObjectVar(Variable):
     _default = None
@@ -19,7 +19,7 @@ class ObjectVar(Variable):
     def get(self):
         return self._value
 
-TYPE_MAP = {float: DoubleVar, bool: BooleanVar, str: StringVar, object: ObjectVar}
+TYPE_MAP = {float: DoubleVar, int: IntVar, bool: BooleanVar, str: StringVar, object: ObjectVar}
 
 class Widget:
     def __init__(self, key: str, var_type: type, init: Any = None,
@@ -228,3 +228,75 @@ def create_tab(notebook, name):
     tab = Frame(notebook)
     notebook.add(tab, text=name)
     return tab
+
+class Progress:
+    def __init__(self, root, title="Processant", maximum=100):
+        self.root = root
+        self.value = 0
+        self.maximum = maximum
+
+        self.cancel_event = threading.Event()
+
+        self.win = Toplevel(root)
+        self.win.title(title)
+        self.win.resizable(False, False)
+        self.win.transient(self.root)
+        self.win.lift()
+        self.win.geometry("400x120")
+
+        self.label = Label(self.win, text="Preparant...", font=("Arial", 12))
+        self.label.pack(pady=10)
+
+        frame_barra = Frame(self.win)
+        frame_barra.pack(fill="x", padx=20, pady=10)
+
+        self.bar = Progressbar(frame_barra, style="Green.Horizontal.TProgressbar", mode="determinate")
+        self.bar.pack(side="left", fill="x", expand=True)
+
+        self.percent_label = Label(frame_barra, text="0 %", width=5)
+        self.percent_label.pack(side="right", padx=(10, 0))
+
+        self.cancel_button = Button(self.win, text="Cancel·lar", command=self.cancel)
+        self.cancel_button.pack(anchor = "e", padx = 20, pady = 5)
+
+        self.bar["maximum"] = maximum
+
+        self.win.protocol("WM_DELETE_WINDOW", self.cancel)
+
+    def update(self, value=None, text=None):
+        if value is not None:
+            self.value = value
+
+        percent = int((self.value / self.maximum) * 100)
+
+        def _update():
+            self.bar["value"] = self.value
+            self.percent_label.config(text=f"{percent} %")
+
+            if text is not None:
+                self.label.config(text=text)
+
+        self.root.after(0, _update)
+
+    def increment(self, text=None):
+        self.value += 1
+        self.update(text=text)
+
+    def cancel(self):
+        self.cancel_event.set()
+
+        self.label.config(text="Cancel·lant...")
+        self.cancel_button.config(state="disabled")
+
+    def cancelled(self):
+        return self.cancel_event.is_set()
+
+    def finish(self, text="Finalitzat ✔"):
+        def _finish():
+            if not self.win.winfo_exists(): return
+
+            self.label.config(text=text)
+            self.cancel_button.config(state="disabled")
+            self.win.after(500, self.win.destroy)
+
+        self.root.after(0, _finish)
