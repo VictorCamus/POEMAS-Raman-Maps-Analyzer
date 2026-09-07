@@ -1,14 +1,15 @@
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from tkinter.ttk import LabelFrame, Label
 from tkinter import messagebox
 from matplotlib.colors import TABLEAU_COLORS
 from lmfit import Parameters, minimize
 import numpy as np
+import threading
 from copy import deepcopy
 
-from window.widgets import Widget
+from window.widgets import Widget, Progress
 from window.builder import BaseWindow
-from process.mathfuncs import Functions, FuncParams, DEFAULT_PARAMS, linear_combination, INIT_PARAMS
+from process.mathfuncs import Functions, FuncParams, linear_combination, INIT_PARAMS, DEFAULT_PARAMS,  DerivedParams
 from process.basics import find_nearest
 
 @dataclass
@@ -45,6 +46,27 @@ class PeakResult:
             param_values = INIT_PARAMS[self.function](**param_values)
 
         return Functions[self.function](xdata, **param_values)
+
+    @property
+    def parameter_names(self):
+        names = list(self.params)
+
+        derived = DerivedParams.get(self.function, {})
+        names.extend(derived)
+
+        return names
+
+    def get_parameter(self, name):
+        if name in self.params:
+            return self.params[name]
+
+        derived = DerivedParams.get(self.function, {})
+
+        if name in derived:
+            params = self.params
+            return derived[name](params)
+
+        raise KeyError(f"Parameter {name!r} is not available for function {self.function!r}")
 
 @dataclass
 class FitResult:
@@ -329,6 +351,12 @@ class FitSpec(BaseWindow):
         return result
 
     def _fitmap(self, value):
+        total = self.file.geometry.N[0] * self.file.geometry.N[1]
+
+        progress = Progress(self.window, title="Ajustant mapa", maximum=total)
+        threading.Thread(target=self._fitmap_thread, args=(value, progress), daemon=True).start()
+
+    def _fitmap_thread(self, value, progress):
         model, init_params = self._init_fit()
         fit_result = self._create_fit_result()
 
@@ -336,14 +364,24 @@ class FitSpec(BaseWindow):
 
         spectra = self.channel.spectra.ydata
         bkg = self.channel.spectra.bkgdata
+        mask = self.file.objects.mask
+
+        current = 0
 
         for i in range(spectra.shape[0]):
             for j in range(spectra.shape[1]):
-                if not self.file.objects.mask[i, j]: continue
+                # Comprovar cancel·lació
+                if progress.cancelled():
+                    progress.finish("Operació cancel·lada")
+                    return
+
+                current += 1
+                progress.update(current, text=f"Ajustant: {current}/{progress.maximum}")
+
+                if not mask[i, j]: continue
 
                 ydata = spectra[i, j][self.xrange] - bkg[i, j][self.xrange]
                 result = self._fit(self.xdata, ydata, model, params)
-
 
                 if result is None:
                     params = init_params.copy()
@@ -352,7 +390,8 @@ class FitSpec(BaseWindow):
                 yfit = model(self.xdata, result.params)
                 r2 = self._r2(ydata, yfit)
 
-                if not result.success or any(p.stderr is None for p in result.params.values()) or r2 < 0.5:
+                if (not result.success
+                    or any(p.stderr is None for p in result.params.values()) or r2 < 0.5):
                     params = init_params.copy()
                     continue
 
@@ -360,16 +399,23 @@ class FitSpec(BaseWindow):
 
                 for name, peak in self.peaks.items():
                     for par_name in peak.params:
-                        fit_result.peaks[peak.ref].params[par_name][i, j] = params[f'{name}_{par_name}'].value
+                        fit_result.peaks[peak.ref].params[par_name][i, j] = \
+                            (params[f'{name}_{par_name}'].value)
 
-                    fit_result.r2[i, j] = r2
+                fit_result.r2[i, j] = r2
 
         name = self.widgets['name'].get()
         self.channel.spectra.fits[name] = fit_result
 
+        self.window.after(0, self._fitmap_finished, name, progress)
+
+    def _fitmap_finished(self, name, progress):
         combofit = self.spec.header.view.widgets['fit'].widget
+
         combofit.options[name] = name
-        combofit.config(values = list (combofit.options.keys()))
+        combofit.config(values=list(combofit.options.keys()))
+
+        progress.finish()
 
     def _init_fit(self):
         names = list(self.peaks)

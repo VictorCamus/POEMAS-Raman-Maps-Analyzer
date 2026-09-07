@@ -3,7 +3,6 @@ import numpy as np
 from tkinter.ttk import Frame
 from tkinter import messagebox
 
-from classes.fits import Peak
 from .widgets import Widget
 from drawing.colormap import cmaps
 from drawing.mapdraw import update_data
@@ -362,6 +361,8 @@ class ViewHeaderSpec:
             self.widgets['left'].set(spec.lims[0])
             self.widgets['right'].set(spec.lims[1])
 
+            self.widgets['peak'].config(state = 'readonly')
+            self.widgets['parameter'].config(state='readonly')
             self.controller.spec.axis.set_xlim(spec.lims)
 
             self.update_peaks()
@@ -372,6 +373,8 @@ class ViewHeaderSpec:
             self.parameter_key, self.parameter = None, None
 
             self.widgets['units'].config(state = 'readonly')
+            self.widgets['peak'].config(state = 'disabled')
+            self.widgets['parameter'].config(state='disabled')
             self.channel.color.cmap_c = 'Spectra'
             self.channel.units = 'cts'
 
@@ -403,6 +406,7 @@ class ViewHeaderSpec:
             if self.parameter_key in self.peak.params: self._parameter = self.peak.params[self.parameter_key]
             else: self.parameter_key, self._parameter = next(iter(self.peak.params.items()))
 
+            self.widgets['parameter'].config(state='readonly')
             self.update_params()
 
         elif value == 'r2':
@@ -413,6 +417,7 @@ class ViewHeaderSpec:
             self.channel.color.cmap_c = 'jet'
             self.channel.units = ''
 
+            self.widgets['parameter'].config(state = 'disabled')
             self.controller.spec.model.map.footer.view.widgets['track_z'].label.config(text = 'r2')
             self.controller._redraw()
 
@@ -429,9 +434,11 @@ class ViewHeaderSpec:
             combo.set('')
             return
 
-        if value in self.peak.params:
-            self._parameter = self.peak.params[value]
-            self.parameter_key = value
+        # if value not in self.peak.available_parameters():
+        #     return
+
+        self._parameter = self.peak.get_parameter(value)
+        self.parameter_key = value
 
         self.channel.Z = self._parameter
         self.channel.update_lims()
@@ -479,7 +486,7 @@ class ViewHeaderSpec:
         if self.peak is None or not self.peak.params or not hasattr(self, 'widgets'):
             return
 
-        params = list(self.peak.params.keys())
+        params = self.peak.parameter_names
 
         combo = self.widgets["parameter"].widget
         combo.config(values=params)

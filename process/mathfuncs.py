@@ -30,28 +30,119 @@ def EMG_init(x0, sigma, A, tau):
 
     return params
 
+def EMG_fwhm(p):
+    sigma = p['sigma']
+    tau = p['tau']
+
+    K = tau / sigma
+
+    t0 = (1 / K - np.sqrt(2) * erfcxinv(K * np.sqrt(2 / np.pi)))
+
+    def profile(t):
+        z = (1 / K - t) / np.sqrt(2)
+        return np.exp(-0.5 * t**2) * erfcx(z)
+
+    half = profile(t0) / 2
+    left = brentq(lambda t: profile(t) - half, -20, t0)
+
+    right = brentq(lambda t: profile(t) - half, t0, t0 + 20 * K + 20)
+
+    return sigma * (right - left)
+
+def EMG_area(p):
+    mask = np.logical_or.reduce([np.isnan(p['sigma']),
+        np.isnan(p['tau']),
+        np.isnan(p['A'])
+    ])
+    K = p['tau'] / p['sigma']
+
+    mean_g = (p['x0'] + p['sigma'] * np.sqrt(2)
+        * erfcxinv(K * np.sqrt(2 / np.pi)) - p['sigma'] / K)
+
+    return (np.sqrt(2 * np.pi) * p['sigma'] * p['A']
+        * np.exp(0.5 * ((mean_g - p['x0']) / p['sigma'])**2))
+
+import numpy as np
+from scipy.special import erfcx
+
+
 def erfcxinv(y):
-    if y <= 0:
-        raise ValueError("erfcxinv requires y > 0")
+    """
+    Inverse of erfcx(x).
 
-    f = lambda x: erfcx(x) - y
+    Accepts scalars or NumPy arrays.
+    Invalid values (NaN, inf or <= 0) return NaN.
+    """
 
-    if y > 1:
-        a, b = -1.0, 0.0
+    scalar = np.ndim(y) == 0
+    y = np.asarray(y, dtype=float)
 
-        while f(a) < 0:
-            a *= 2
+    x = np.full_like(y, np.nan)
 
-    elif y < 1:
-        a, b = 0.0, 1.0
+    valid = np.isfinite(y) & (y > 0)
 
-        while f(b) > 0:
-            b *= 2
+    if not np.any(valid):
+        return float(x) if scalar else x
 
-    else:
-        return 0.0
+    # ------------------------------------------------------------
+    # y >= 1  ->  x <= 0
+    # ------------------------------------------------------------
 
-    return brentq(f, a, b)
+    mask = valid & (y >= 1)
+
+    if np.any(mask):
+        ym = y[mask]
+
+        lo = np.full_like(ym, -1.0)
+        hi = np.zeros_like(ym)
+
+        while np.any(erfcx(lo) < ym):
+            test = erfcx(lo) < ym
+            lo[test] *= 2
+
+        for _ in range(60):
+            mid = (lo + hi) / 2
+            value = erfcx(mid)
+
+            lower = value >= ym
+
+            lo = np.where(lower, mid, lo)
+            hi = np.where(lower, hi, mid)
+
+        x[mask] = (lo + hi) / 2
+
+    # ------------------------------------------------------------
+    # 0 < y < 1  ->  x > 0
+    # ------------------------------------------------------------
+
+    mask = valid & (y < 1)
+
+    if np.any(mask):
+        ym = y[mask]
+
+        hi = np.maximum(
+            1.0,
+            1 / (np.sqrt(np.pi) * ym)
+        )
+
+        lo = hi / 2
+
+        while np.any(erfcx(lo) < ym):
+            test = erfcx(lo) < ym
+            lo[test] /= 2
+
+        for _ in range(60):
+            mid = (lo + hi) / 2
+            value = erfcx(mid)
+
+            lower = value >= ym
+
+            lo = np.where(lower, mid, lo)
+            hi = np.where(lower, hi, mid)
+
+        x[mask] = (lo + hi) / 2
+
+    return float(x) if scalar else x
 
 def exp_decay(x, A, tau):
     return A * np.exp (-x / tau)
@@ -79,18 +170,34 @@ FuncParams = {
     'Poly2': ('a0', 'a1', 'a2'),
 }
 
+DerivedParams = {
+    'Gaussiana': {'FWHM': lambda p: 2 * np.sqrt(2 * np.log(2)) * p['sigma'],
+                  'Àrea': lambda p: np.sqrt(2 * np.pi) * p['sigma'] * p['A']},
+
+    'Lorentziana': {'FWHM': lambda p: 2 * p['gamma'],
+                    'Àrea': lambda p: np.pi * p['gamma'] * p['A']},
+
+    'Voigt': {'FWHM': lambda p: (0.5346 * (2 * p['gamma'])
+             + np.sqrt(0.2166 * (2 * p['gamma'])**2 + (2 * np.sqrt(2 * np.log(2)) * p['sigma'])**2)),
+             'Àrea': lambda p: (p['A'] * p['sigma'] * np.sqrt(2 * np.pi)
+             / erfcx(p['gamma'] / (p['sigma'] * np.sqrt(2))))},
+
+    'EMG': {'FWHM': lambda p: EMG_fwhm(p),
+            'Àrea': lambda p: EMG_area(p)}}
+
 INIT_PARAMS = {'EMG': EMG_init, 'Voigt': voigt_init}
 
 DEFAULT_PARAMS = {
     'x0':    {'value': 0.0,    'min': -np.inf, 'max': np.inf, 'vary': True, 'color': 'viridis', 'dim': 1},
-    'sigma': {'value': 1.0,    'min': 0.0,     'max': np.inf, 'vary': True, 'color': 'cividis', 'dim': 1},
-    'gamma': {'value': 1.0,    'min': 0.0,     'max': np.inf, 'vary': True, 'color': 'inferno', 'dim': 1},
-    'FWHM':  {'value': 1.0,    'min': 0.0,     'max': np.inf, 'vary': True, 'color': 'cividis', 'dim': 1},
+    'sigma': {'value': 1.0,    'min': 0.0,     'max': np.inf, 'vary': True, 'color': 'magma', 'dim': 1},
+    'gamma': {'value': 1.0,    'min': 0.0,     'max': np.inf, 'vary': True, 'color': 'plasma', 'dim': 1},
     'A':     {'value': 1000.0, 'min': 0.0,     'max': np.inf, 'vary': True, 'color': 'hot',     'dim': 0},
-    'tau':   {'value': 10,     'min': 0.0,     'max': np.inf, 'vary': True, 'color': 'Reds',    'dim': 1},
+    'tau':   {'value': 10,     'min': 0.0,     'max': np.inf, 'vary': True, 'color': 'reds',    'dim': 1},
     'a0':    {'value': 0.0,    'min': 0.0,     'max': np.inf, 'vary': True, 'color': 'gray',    'dim': 0},
-    'a1':    {'value': 0.0,    'min': -np.inf, 'max': np.inf, 'vary': True, 'color': 'Blues',   'dim': -1},
-    'a2':    {'value': 0.0,    'min': -np.inf, 'max': np.inf, 'vary': True, 'color': 'Oranges', 'dim': -2}
+    'a1':    {'value': 0.0,    'min': -np.inf, 'max': np.inf, 'vary': True, 'color': 'blues',   'dim': -1},
+    'a2':    {'value': 0.0,    'min': -np.inf, 'max': np.inf, 'vary': True, 'color': 'oranges', 'dim': -2},
+    'FWHM':  {'color': 'cividis', 'dim': 1},
+    'Àrea':  {'color': 'inferno', 'dim': 1}
 }
 
 def get_units(dim, units):
