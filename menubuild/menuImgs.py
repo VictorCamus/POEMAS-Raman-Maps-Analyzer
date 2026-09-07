@@ -37,7 +37,12 @@ class GestorImatges(BaseMenu): # Classe que gestiona les accions relacionades am
         # --- Normalitzar rotació ---
 
         g.rotation += rot if not g.flip else -rot # Si està rotada, la rotació resta, si no, suma.
-        if flip: g.flip = not g.flip
+
+        if flip:
+            g.flip = not g.flip
+            mask = np.flip(mask, axis=1)
+
+        if rot != 0: mask = np.rot90(mask, k=rot)
 
         # --- Rotar canals ---
         for ch in file.channel.values():
@@ -45,7 +50,6 @@ class GestorImatges(BaseMenu): # Classe que gestiona les accions relacionades am
 
             if rot != 0:
                 ch.Z = np.rot90(ch.Z, k=rot)
-                if mask is not None: mask = np.rot90(mask, k=rot)
 
                 if spec is not None:
                     spec.ydata = np.rot90(spec.ydata, k=rot)
@@ -61,7 +65,6 @@ class GestorImatges(BaseMenu): # Classe que gestiona les accions relacionades am
 
             if flip:
                 ch.Z = np.flip(ch.Z, axis = 1)
-                if mask is not None: mask = np.flip(mask, axis = 1)
 
                 if spec is not None:
                     spec.ydata = np.flip(spec.ydata, axis = 1)
