@@ -6,6 +6,7 @@ from process.basics import truncar_significatives
 def hist(ax, data, lims, xlabel = None, nbins = 80, weight = False, color='blue'):
     vmin, vmax = lims
     ample = (vmax - vmin) / nbins
+
     HIST = fer_histograma(data, nbins, lims=[vmin, vmax], weight=weight)
     bins = HIST[:, 0]; values = HIST[:, 1]
     minBin = np.min(bins); maxBin = np.max(bins)

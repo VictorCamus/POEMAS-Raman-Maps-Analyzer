@@ -40,7 +40,20 @@ class Histogrames(BaseFigureWindow):
 
         btn_next = Button(buttons, text="▶", command = self.toggle_plot, font=("Arial", 16))
         btn_next.pack(side="left", padx=2)
-        
+
+    @property
+    def data(self):
+        mask = (self.lims[0] < self._data) & (self._data < self.lims[1])
+        return self._data[mask]
+
+    @property
+    def nbins(self):
+        return self.widgets['nbins'].get()
+
+    @property
+    def color(self):
+        return self.widgets['cb_color'].value.get()
+
     def plot_file(self, value):
         self.file = value
         self.set_widgets()
@@ -52,19 +65,16 @@ class Histogrames(BaseFigureWindow):
     def plot_lims(self, inf=None, sup=None):
         if inf is not None: self.lims = (inf, self.lims[1])
         if sup is not None: self.lims = (self.lims[0], sup)
-        
-        match self.mode:
-            case "Hist": self.axis.set_xlim(self.lims)
-            case "Box": self.axis.set_ylim(self.lims)
-        
-        self.figure.tight_layout()
-        self.figure.canvas.draw_idle()
-        
+
+        self.actualitza_plot()
+
     def plot_remove(self):
         match self.mode:
             case "Hist": self.plot.remove()
             case "Box": remove_boxplot(self.plot)
-    
+
+        delattr(self, 'plot')
+
     def plot_color(self, value):
         match self.mode:
             case "Hist": self.plot.set_color(value)
@@ -75,18 +85,25 @@ class Histogrames(BaseFigureWindow):
     
     def toggle_plot(self):
         self.plot_remove()
-        match self.mode:
-            case "Hist": self.mode = "Box" 
-            case "Box": self.mode = "Hist"
-                
-        self.actualitza_plot()
-    
-    def actualitza_plot(self):
-        color = self.widgets['cb_color'].value.get()
 
         match self.mode:
-            case "Hist": self.plot, self.hist_data, _ = hist(self.axis, self.data, self.lims, xlabel=self.channel.ax_title, color=color)
-            case "Box": self.plot = boxplot(self.axis, self.data, self.lims, name=self.channel.name, ylabel=self.channel.ax_title, color=color)
+            case "Hist":
+                self.mode = "Box"
+                self.widgets['nbins'].config(state = 'disabled')
+            case "Box":
+                self.mode = "Hist"
+                self.widgets['nbins'].config(state = 'normal')
+
+        self.actualitza_plot()
+    
+    def actualitza_plot(self, value = None):
+        if hasattr(self, "plot"): self.plot_remove()
+
+        match self.mode:
+            case "Hist":
+                self.plot, self.hist_data, _ = hist(self.axis, self.data, self.lims, nbins = self.nbins, xlabel=self.channel.ax_title, color=self.color)
+            case "Box":
+                self.plot = boxplot(self.axis, self.data, self.lims, name=self.channel.name, ylabel=self.channel.ax_title, color=self.color)
 
         self.figure.tight_layout()
         self.figure.tight_layout()
@@ -147,11 +164,9 @@ class Histogrames(BaseFigureWindow):
             kurt = (norm**4).mean()
 
         lw, q1, q2, q3, tw = np.percentile(data, [5, 25, 50, 75, 95])
-
-        if hasattr(self, "plot"): self.plot_remove()
         
         self.lims = (np.percentile(data, 0.5), np.percentile(data, 99.5))
-        self.data = data
+        self._data = data
 
         return mean, std, skew, kurt, lw, q1, q2, q3, tw
 
@@ -180,6 +195,10 @@ class Histogrames(BaseFigureWindow):
             "sup": Widget(key="sup", var_type=float, init=round(self.lims[1], 3),
                           text="Límit superior:", widget="entry",
                           setter=self.plot_lims, mode="kwargs"),
+
+            "nbins": Widget(key="nbins", var_type=int, init=50,
+                   text="Nombre de barres:", widget="entry",
+                   setter=self.actualitza_plot, mode="args"),
 
             "mean": Widget(key="mean", var_type=float, init=round(mean, 3),
                            text="Mitjana:", widget="entry", widget_kwargs={"state": "readonly"},
