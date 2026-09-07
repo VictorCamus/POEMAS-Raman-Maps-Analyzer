@@ -40,17 +40,17 @@ class Widget:
                                     **setter_kwargs if setter_kwargs is not None else {})
         else: self.callback = None
 
-    def add(self, frame, row = 0, col = 0):
+    def add(self, frame, row = 0, col = 0, columnspan = 1):
         self.value = TYPE_MAP[self.var_type](frame, value=self.init)
         self.widget = WIDGET_MAP[self.widget_type](self._func, frame, set_value=self.value, **self.widget_kwargs)
 
         if self.text:
             label = Label(frame, text=self.text, font=('Helvetica', 9, 'bold'), bg='#2b2b2b', fg='white')
-            label.grid(row=row, column=col, padx=5, pady=2, sticky='nw')
+            label.grid(row=row, column=col, padx=5, pady=4, sticky='nw')
             self.label = label  # afegim el label com a atribut del widget
             col = col + 1
 
-        self.widget.grid(row=row, column=col, padx=5, pady=2, sticky='nw')
+        self.widget.grid(row=row, column=col, columnspan = columnspan, padx=5, pady=4, sticky='nw')
 
     def set(self, value):
         self.value.set(value)
@@ -126,8 +126,8 @@ def add_entry(func, frame, set_value=None, width = 18, **kwargs):
     entry.bind('<Return>', func)
     return entry
 
-def add_button(func, frame, set_value=None):
-    return Button(frame, textvariable=set_value, command=func, font=('Helvetica', 9, 'bold'), background = '#3a7ff6', fg = 'white')
+def add_button(func, frame, set_value=None, **kwargs):
+    return Button(frame, textvariable=set_value, command=func, font=('Helvetica', 9, 'bold'), background = '#3a7ff6', fg = 'white', **kwargs)
 
 def add_checkbutton(func, frame, set_value=None, text="", **kwargs):
     return Checkbutton(frame, text=text, variable=set_value, command=func,

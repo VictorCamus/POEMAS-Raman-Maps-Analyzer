@@ -10,8 +10,3 @@ Aplicació (WSxM single):
 
 Revisió general:
 	- Mida diferent de les figures on el frame no ha sigut obert prèviament.
-
-FAENA AGOST:
-
-- Adaptar el programa MapSpec al WSxM:
-    · Operacions entre canals.

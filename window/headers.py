@@ -349,7 +349,7 @@ class ViewHeaderSpec:
             self._peak = next(iter(self.fit.peaks.values()))
             self.peak_key = self.peak.ref
 
-            if self.parameter_key in self.peak.params: self._parameter = self.peak.params[self.parameter_key]
+            if self.parameter_key in self.peak.parameter_names: self._parameter = self.peak.get_parameter(self.parameter_key)
             else: self.parameter_key, self._parameter = next(iter(self.peak.params.items()))
 
             spec.units = self._fit.units
@@ -376,7 +376,7 @@ class ViewHeaderSpec:
             self.widgets['peak'].config(state = 'disabled')
             self.widgets['parameter'].config(state='disabled')
             self.channel.color.cmap_c = 'Spectra'
-            self.channel.units = 'cts'
+            self.channel.units = 'a.u'
 
             self.controller.spec.model.map.footer.view.widgets['track_z'].label.config(text=f'{self.channel.name} ({self.channel.units})')
             self.controller._update_map(self.channel)
@@ -403,7 +403,7 @@ class ViewHeaderSpec:
 
             # En canviar de pic, seleccionem el primer paràmetre
 
-            if self.parameter_key in self.peak.params: self._parameter = self.peak.params[self.parameter_key]
+            if self.parameter_key in self.peak.parameter_names: self._parameter = self.peak.get_parameter(self.parameter_key)
             else: self.parameter_key, self._parameter = next(iter(self.peak.params.items()))
 
             self.widgets['parameter'].config(state='readonly')

@@ -2,28 +2,36 @@ import numpy as np
 
 def truncar_significatives(x, n, cap_a='amunt'):
     from decimal import Decimal, getcontext, ROUND_FLOOR, ROUND_CEILING
-    
+
     if x == 0:
-        return int(0)
+        return 0.0
 
     getcontext().prec = 50
 
-    signe = 1 if x > 0 else -1
-    x_dec = Decimal(str(abs(x)))
+    x_dec = Decimal(str(x))
 
-    exponent = int(x_dec.log10().to_integral(rounding=ROUND_FLOOR))
+    exponent = int(
+        x_dec.copy_abs().log10().to_integral(rounding=ROUND_FLOOR)
+    )
+
     factor = Decimal(10) ** (exponent - n + 1)
 
     if cap_a == 'avall':
-        truncat = (x_dec / factor).to_integral(rounding=ROUND_FLOOR) * factor
+        truncat = (
+            x_dec / factor
+        ).to_integral(rounding=ROUND_FLOOR) * factor
+
     elif cap_a == 'amunt':
-        truncat = (x_dec / factor).to_integral(rounding=ROUND_CEILING) * factor
+        truncat = (
+            x_dec / factor
+        ).to_integral(rounding=ROUND_CEILING) * factor
+
     else:
-        raise ValueError("El valor de 'cap_a' ha de ser 'amunt' o 'avall'")
+        raise ValueError(
+            "El valor de 'cap_a' ha de ser 'amunt' o 'avall'"
+        )
 
-    valor = float(signe * truncat)
-
-    return valor
+    return float(truncat)
 
 def find_nearest(array, values):
     array = np.asarray(array)

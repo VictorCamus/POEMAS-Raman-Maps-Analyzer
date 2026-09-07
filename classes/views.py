@@ -2,7 +2,6 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from abc import ABC, abstractmethod
 import numpy as np
 from matplotlib.colors import TABLEAU_COLORS
-import matplotlib.font_manager
 
 from classes.objects import ProfilePlot
 from classes.interactions import MapInteraction
@@ -141,7 +140,7 @@ class SpecView(FigureView):
     def _create_plot(self):
         self.xlabels = {'nm': 'λ (nm)', 'eV': 'E (eV)', '1/cm': r'Raman Shift (cm⁻¹)'}
 
-        self.figure, self.axis = base_plot(xtitle = self.xlabels[self.channel.spectra.units], ytitle = 'Intensity (cts)')
+        self.figure, self.axis = base_plot(xtitle = self.xlabels[self.channel.spectra.units], ytitle = 'Intensity (a.u.)')
         self.figure.subplots_adjust(left=0.2, right=0.95, bottom=0.2, top=0.8)
 
     def _create_header(self):

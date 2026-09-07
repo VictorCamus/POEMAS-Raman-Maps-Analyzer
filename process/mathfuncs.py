@@ -200,13 +200,16 @@ DEFAULT_PARAMS = {
     'Àrea':  {'color': 'inferno', 'dim': 1}
 }
 
-def get_units(dim, units):
-    super = {-1: '⁻¹', '2': '²', 3: '³'}
+def get_units(dim: int, units: str) -> str:
+    if dim == 0:
+        return ""
 
-    if dim == 0: return 'cts'
-    if dim == 1: return units
+    if dim == 1:
+        return units
 
-    return f'{units}{super[dim]}'
+    superscript = str.maketrans("0123456789-", "⁰¹²³⁴⁵⁶⁷⁸⁹⁻")
+
+    return f"{units}{str(dim).translate(superscript)}"
 
 def linear_combination(names, funcs):
     func_list = [Functions[f] for f in funcs]
