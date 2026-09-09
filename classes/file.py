@@ -105,7 +105,7 @@ class Geometry:
 
     @property
     def mida(self):
-        return (self.xlims[1] - self.xlims[0], self.ylims[1] - self.ylims[0])
+        return self.xlims[1] - self.xlims[0], self.ylims[1] - self.ylims[0]
 
     @property
     def rect(self):
@@ -114,12 +114,13 @@ class Geometry:
     def rotate(self, rotation, flip):
         Lx, Ly = self.midaBase
         xlims, ylims = self.xylims
+        xnew, ynew = xlims, ylims
 
         match rotation:
-            case 0: xnew, ynew = xlims, ylims
-            case 1: xnew, ynew = ylims, (Ly - xlims[1], Ly - xlims[0])
-            case 2: xnew, ynew = (Lx - xlims[1], Lx - xlims[0]), (Ly - ylims[1], Ly - ylims[0])
-            case 3: xnew, ynew = (Lx - ylims[1], Lx - ylims[0]), xlims
+            case 1: xnew, ynew = ynew, (Ly - xlims[1], Ly - xlims[0])
+            case 2: xnew, ynew = (Lx - xlims[1], Lx - xlims[0]), (Ly - ynew[1], Ly - ynew[0])
+            case 3: xnew, ynew = (Lx - ynew[1], Lx - ynew[0]), xlims
+            case _: pass
 
         if flip: xnew = (Lx - xnew[1], Lx - xnew[0])
 

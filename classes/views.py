@@ -154,6 +154,7 @@ class SpecView(FigureView):
 
         self.line, = self.axis.plot(spec.x, spec.y, color="b")
         self.bkgline, = self.axis.plot(spec.x, spec.bkg, color="tab:blue")
+        self.bkgline.set_visible(spec.bkg_active)
         self.fitline = dict()
         self.etiquette = dict()
 
@@ -214,12 +215,12 @@ class SpecView(FigureView):
 
                     for etiq in self.etiquette.values(): etiq.set_visible(self.header.view.widgets['etiq'].get())
 
-                    if self.header.view.widgets['bkg'].get():
+                    if spec.bkg_active:
                         yfit += bkg
                         self.fitline[name] = self.axis.fill_between(xfit, yfit, bkg, color=colors[i + 1], alpha=0.6)
                     else: self.fitline[name] = self.axis.fill_between(xfit, yfit, 0, color=colors[i + 1], alpha=0.6)
 
-            if self.header.view.widgets['bkg'].get(): ytotal += bkg
+            if spec.bkg_active: ytotal += bkg
             self.fitline['All'], = self.axis.plot(xfit, ytotal, color = 'k')
 
         self.line.set_ydata(ydata)

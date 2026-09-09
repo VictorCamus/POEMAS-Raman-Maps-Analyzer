@@ -110,13 +110,14 @@ class FitSpec(BaseWindow):
 
     @property
     def bkg(self):
+        bkg = np.zeros_like(self.channel.spectra.y[self.xrange])
+
         if self.spec.header.view.widgets['bkg'].get():
             bkg = self.channel.spectra.bkg[self.xrange].copy()
+
             for peak in self.peaks.values():
                 if peak.bkg:
                     bkg += peak.ydata(self.xdata)
-        else:
-            bkg = np.zeros_like(self.channel.spectra.bkg[self.xrange])
 
         return bkg
 
@@ -252,7 +253,7 @@ class FitSpec(BaseWindow):
                 self.spec.etiquette[name].xy = (x0, ycoord)
 
         else:
-            bkg = np.zeros_like(self.channel.spectra.bkg)
+            bkg = np.zeros_like(self.channel.spectra.y)
             bkg[self.xrange] = self.bkg
             self.spec.bkgline.set_ydata(bkg)
 
@@ -346,7 +347,7 @@ class FitSpec(BaseWindow):
             for par in peak.params:
                 result.peaks[peak.ref].params[par] = np.full(self.channel.Z.shape, np.nan, dtype=float)
 
-            result.r2 = np.full(self.channel.Z.shape, np.nan, dtype=float)
+        result.r2 = np.full(self.channel.Z.shape, np.nan, dtype=float)
 
         return result
 
@@ -380,7 +381,9 @@ class FitSpec(BaseWindow):
 
                 if not mask[i, j]: continue
 
-                ydata = spectra[i, j][self.xrange] - bkg[i, j][self.xrange]
+                if bkg is None: ydata = spectra[i, j][self.xrange]
+                else: ydata = spectra[i, j][self.xrange] - bkg[i, j][self.xrange]
+
                 result = self._fit(self.xdata, ydata, model, params)
 
                 if result is None:
@@ -464,6 +467,7 @@ class FitSpec(BaseWindow):
     def _fitdata(self, value = None):
         model, init_params = self._init_fit()
         spectra = self.channel.spectra.y
+
         bkg = self.channel.spectra.bkg
 
         ydata = spectra[self.xrange] - bkg[self.xrange]

@@ -70,58 +70,42 @@ class Fons(BaseWindow):
     def baseline(self):
         return Baseline(x_data=self.xdata[self.xrange])
 
-    def plot_bkg(self, value):
+    def plot_bkg(self, value = None, key = 'nan'):
         self.widgets["percentile"].config(state = 'disabled')
         self.widgets["spline"].config(state='disabled')
         self.bkg = np.full(self.xdata.shape, np.nan)
         bkg_value = np.full_like(self.xrange, np.nan)
 
-        match value:
+        match key:
             case 'nan': pass
             case 'percentile':
                 self.widgets["percentile"].config(state='normal')
                 bkg_value = np.nanpercentile(self.ydata, self.widgets["percentile"].get())
 
             case 'spline':
-
                 self.widgets["spline"].config(state='normal')
-                bkg_value, _ = self.baseline.mixture_model(self.ydata, lam = 10 ** self.widgets["spline"].get())
+                bkg_value, _ = self.baseline.mixture_model(self.ydata, 10 ** self.widgets["spline"].get())
 
+        bkg_value = np.maximum(bkg_value, 0)
         self.bkg[self.xrange] = bkg_value
         self.spec.bkgline.set_ydata(self.bkg)
         self.spec.canvas.draw_idle()
-
-    def percentile(self, value):
-        bkg_value = np.nanpercentile(self.ydata, value)
-
-        self.bkg = np.full(self.xdata.shape, np.nan)
-        self.bkg[self.xrange] = bkg_value
-
-        self.spec.bkgline.set_ydata(self.bkg)
-        self.spec.canvas.draw_idle()
-
-        return
-
-    def spline(self, value):
-        bkg_value, _ = self.baseline.mixture_model(self.ydata, lam = 10 ** value)
-
-        self.bkg = np.full(self.xdata.shape, np.nan)
-        self.bkg[self.xrange] = bkg_value
-
-        self.spec.bkgline.set_ydata(self.bkg)
-        self.spec.canvas.draw_idle()
-
-        return
 
     def apply_bkg(self, value):
-        bkg_class = self.widgets["bkg"].get()
+        bkg_class = self.widgets["key"].get()
         if bkg_class == 'nan':
-            self.channel.spectra.bkgdata = np.zeros_like(self.channel.spectra.ydata)
+            self.channel.spectra.bkgdata = None
             return
 
         if self.widgets["map_bkg"].get() == 'one':
             N = self.file.geometry.N
-            self.channel.spectra.bkgdata = np.tile(self.bkg, (N[1], N[0], 1))
+            bkgdata = np.tile(self.bkg, (N[1], N[0], 1))
+
+            if np.nanmax(bkgdata) <= np.iinfo(np.uint16).max:
+                self.channel.spectra.bkgdata = np.rint(bkgdata).astype(np.uint16)
+            else:
+                self.channel.spectra.bkgdata = np.rint(bkgdata).astype(np.uint32)
+
         else:
             spec = self.channel.spectra.ydata
             total = spec.shape[0] * spec.shape[1]
@@ -130,17 +114,17 @@ class Fons(BaseWindow):
             threading.Thread(target=self._calculate_bkg_thread, args=(bkg_class, progress), daemon=True).start()
 
     def _calculate_bkg_thread(self, value, progress):
-        spec = self.channel.spectra.ydata
+        ydata = self.channel.spectra.ydata
         mask = self.file.objects.mask
         bkg_class = value
 
         # Resultat temporal
-        bkgdata = np.zeros_like(spec)
+        bkgdata = np.zeros(ydata.shape)
 
         current = 0
 
-        for i in range(spec.shape[0]):
-            for j in range(spec.shape[1]):
+        for i in range(ydata.shape[0]):
+            for j in range(ydata.shape[1]):
                 if progress.cancelled():
                     progress.finish("Operació cancel·lada")
                     return
@@ -150,19 +134,25 @@ class Fons(BaseWindow):
 
                 if not mask[i, j]: continue
 
-                spectrum = spec[i, j, :][self.xrange]
+                spectrum = ydata[i, j, :][self.xrange]
                 bkg = np.full(self.xdata.shape, np.nan)
 
                 if bkg_class == 'percentile':
                     bkg_value = np.nanpercentile(spectrum, self.widgets["percentile"].get())
 
                 elif bkg_class == 'spline':
-                    bkg_value, _ = self.baseline.mixture_model(spectrum)
+                    bkg_value, _ = self.baseline.mixture_model(spectrum, lam=10 ** self.widgets["spline"].get())
 
+                bkg_value = np.maximum(bkg_value, 0)
                 bkg[self.xrange] = bkg_value
+
                 bkgdata[i, j, :] = bkg
 
-        self.channel.spectra.bkgdata = bkgdata
+        if np.nanmax(bkgdata) <= np.iinfo(np.uint16).max:
+            self.channel.spectra.bkgdata = np.rint(bkgdata).astype(np.uint16)
+        else:
+            self.channel.spectra.bkgdata = np.rint(bkgdata).astype(np.uint32)
+
         progress.finish()
 
     def _create_widgets(self):
@@ -173,19 +163,19 @@ class Fons(BaseWindow):
         opts_bkg = {'Únic': 'one', 'Un per espectre': 'different'}
 
         self.widgets = {
-            "bkg": Widget(key="bkg", var_type=str, init='nan',
+            "key": Widget(key="key", var_type=str, init='nan',
                        text="Classe de fons:", widget="radiobutton", widget_kwargs={"options": opts},
-                       setter=self.plot_bkg),
+                       setter=self.plot_bkg, mode = 'kwargs'),
 
             "percentile": Widget(key="percentile", var_type=float, init=0,
                           text="Percentil (%):", widget="scale",
                           widget_kwargs = {'to': 100, 'resolution': 1, 'state': 'disabled'},
-                          setter=self.percentile),
+                          setter=self.plot_bkg, setter_kwargs = {'key': 'percentile'}),
 
             "spline": Widget(key="spline", var_type=float, init=5,
                       text="Spline:", widget="scale",
                       widget_kwargs={"from": 3, "to": 7, "resolution": 1, "state": "disabled"},
-                      setter = self.spline),
+                      setter = self.plot_bkg, setter_kwargs = {'key': 'spline'}),
 
             "map_bkg": Widget(key="map_bkg", var_type=str, init='one',
                        text="Fons del mapa:", widget="radiobutton", widget_kwargs={"options": opts_bkg}),

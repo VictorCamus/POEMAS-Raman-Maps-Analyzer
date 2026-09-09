@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.special import voigt_profile, erfcx
+from scipy.special import voigt_profile, erfc, erfcx
 from scipy.stats import exponnorm
 from scipy.optimize import brentq
 
@@ -30,30 +30,36 @@ def EMG_init(x0, sigma, A, tau):
 
     return params
 
-def EMG_fwhm(p):
-    sigma = p['sigma']
-    tau = p['tau']
+def _EMG_fwhm_scalar(sigma, tau):
+    if not np.isfinite(sigma) or not np.isfinite(tau): return np.nan
+    if sigma <= 0 or tau <= 0: return np.nanç
 
     K = tau / sigma
 
     t0 = (1 / K - np.sqrt(2) * erfcxinv(K * np.sqrt(2 / np.pi)))
 
+    if not np.isfinite(t0): return np.nan
+
     def profile(t):
         z = (1 / K - t) / np.sqrt(2)
-        return np.exp(-0.5 * t**2) * erfcx(z)
+        return np.exp(1 / (2 * K ** 2) - t / K) * erfc(z)
 
     half = profile(t0) / 2
-    left = brentq(lambda t: profile(t) - half, -20, t0)
 
+    left = brentq(lambda t: profile(t) - half, -20, t0)
     right = brentq(lambda t: profile(t) - half, t0, t0 + 20 * K + 20)
 
     return sigma * (right - left)
 
+def EMG_fwhm(p):
+    sigma = np.asarray(p['sigma'], dtype=float)
+    tau = np.asarray(p['tau'], dtype=float)
+
+    fwhm = np.vectorize(_EMG_fwhm_scalar)(sigma, tau)
+
+    return fwhm
+
 def EMG_area(p):
-    mask = np.logical_or.reduce([np.isnan(p['sigma']),
-        np.isnan(p['tau']),
-        np.isnan(p['A'])
-    ])
     K = p['tau'] / p['sigma']
 
     mean_g = (p['x0'] + p['sigma'] * np.sqrt(2)
@@ -61,10 +67,6 @@ def EMG_area(p):
 
     return (np.sqrt(2 * np.pi) * p['sigma'] * p['A']
         * np.exp(0.5 * ((mean_g - p['x0']) / p['sigma'])**2))
-
-import numpy as np
-from scipy.special import erfcx
-
 
 def erfcxinv(y):
     """

@@ -489,9 +489,13 @@ def load(file_list, fileclass):
                          'eV': nm_to_eV(xdata_nm),
                          '1/cm': nm_to_raman(xdata_nm, d['laser'])}
 
-                spectra = d['spectra'].reshape(N[1], N[0], d['spectra'].shape[1]).copy()
+                spectra = d['spectra'].reshape(N[1], N[0], d['spectra'].shape[1])
+
+                if np.nanmax(spectra) <= np.iinfo(np.uint16).max: spectra = spectra.astype(np.uint16)
+                else: spectra = spectra.astype(np.uint32)
+
                 laser = d['laser']
-                spectra = SpecData(xdata = xdata, ydata = spectra, units = d['units']['z'])
+                spectra = SpecData(xdata = xdata, raw_ydata = spectra, units = d['units']['z'])
                 channels['Spectra'] = ChannelData(name = 'Spectra', units = 'cts', lims = None, spectra = spectra)
 
     data = {'channel': channels, 'geometry': Geometry(N, mida), 'objects': ObjectData(laser = laser)}

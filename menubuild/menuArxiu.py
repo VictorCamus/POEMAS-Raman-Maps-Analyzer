@@ -7,6 +7,90 @@ from fileio import open_file, h5
 from classes.file import FileData, FileView
 from .base import BaseMenu
 
+import sys
+import numpy as np
+from dataclasses import is_dataclass, fields
+
+def object_size(obj, seen=None):
+    """Mida total d'un objecte, evitant comptar referències repetides."""
+
+    if seen is None:
+        seen = set()
+
+    obj_id = id(obj)
+
+    if obj_id in seen:
+        return 0
+
+    seen.add(obj_id)
+
+    if isinstance(obj, np.ndarray):
+        return obj.nbytes
+
+    if is_dataclass(obj) and not isinstance(obj, type):
+        return (
+            sys.getsizeof(obj)
+            + sum(
+                object_size(getattr(obj, field.name), seen)
+                for field in fields(obj)
+                if getattr(obj, field.name) is not None
+            )
+        )
+
+    if isinstance(obj, dict):
+        return (
+            sys.getsizeof(obj)
+            + sum(
+                object_size(k, seen) + object_size(v, seen)
+                for k, v in obj.items()
+            )
+        )
+
+    if isinstance(obj, (list, tuple, set, frozenset)):
+        return (
+            sys.getsizeof(obj)
+            + sum(object_size(x, seen) for x in obj)
+        )
+
+    return sys.getsizeof(obj)
+
+
+def memory_report(obj):
+    """Mostra la mida de cada instància/atribut de forma jeràrquica."""
+
+    def show(value, name, indent=0):
+
+        # Cada branca té el seu propi 'seen'
+        size = object_size(value)
+
+        print(
+            f"{' ' * indent}"
+            f"{name}: {size/ 1024} kB"
+        )
+
+        if is_dataclass(value) and not isinstance(value, type):
+
+            for field in fields(value):
+                child = getattr(value, field.name)
+
+                if child is not None:
+                    show(
+                        child,
+                        field.name,
+                        indent + 4
+                    )
+
+        elif isinstance(value, dict):
+
+            for key, child in value.items():
+                show(
+                    child,
+                    str(key),
+                    indent + 4
+                )
+
+    show(obj, type(obj).__name__)
+
 class GestorArxiu(BaseMenu):  # Classe que gestiona les accions del menú "Arxiu" de l'aplicació.
     ordre = 0 # Atribut per a ordenar els menús (opcional)
     
@@ -52,6 +136,7 @@ class GestorArxiu(BaseMenu):  # Classe que gestiona les accions del menú "Arxiu
 
         for filename, files in groups.items():
             file = open_file(format, file_list = files, fileclass = FileData)
+            memory_report(file)
             self._add_file(filename, file, files[0].parent)
 
     def _open_session(self):  # Obre un fitxer AIST i carrega les dades en el notebook.

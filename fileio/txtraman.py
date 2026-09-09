@@ -1,4 +1,4 @@
-from numpy import genfromtxt, unique
+import numpy as np
 from process.converter import raman_to_nm, raman_to_eV, nm_to_raman, nm_to_eV, eV_to_raman, eV_to_nm
 from classes import ChannelData, Geometry, ObjectData, SpecData
 
@@ -15,16 +15,20 @@ def load(file_list, fileclass):
                 xunits = linia.split('=', 1)[1].strip()
                 break
     
-    dades = genfromtxt(file, delimiter = '\t') # q: [0,2:]. x: [1:,0]. y: [1:,1]. I: [1:,2:]
+    dades = np.genfromtxt(file, delimiter = '\t') # q: [0,2:]. x: [1:,0]. y: [1:,1]. I: [1:,2:]
     q = dades[0,2:]
-    y = unique(dades[1:,0])
-    x = unique(dades[1:,1])
+    y = np.unique(dades[1:,0])
+    x = np.unique(dades[1:,1])
 
-    N = len(x), len(y)
+    npixels = len(x), len(y)
     spectra = dades[1:, 2:]
-    spectra = spectra.reshape(N[1], N[0], spectra.shape[1])
 
-    mida = (x[1]-x[0])*N[0], (y[1]-y[0])*N[1]
+    if np.nanmax(spectra) <= np.iinfo(np.uint16).max: spectra = spectra.astype(np.uint16)
+    else: spectra = spectra.astype(np.uint32)
+
+    spectra = spectra.reshape(npixels[1], npixels[0], spectra.shape[1])
+
+    mida = (x[1]-x[0])*npixels[0], (y[1]-y[0])*npixels[1]
 
     xdata = {}; channels = {}
     match xunits:
@@ -43,8 +47,8 @@ def load(file_list, fileclass):
             xdata['eV'] = raman_to_eV(q, laser)
             xdata['1/cm'] = q
 
-    spectra = SpecData(xdata = xdata, ydata = spectra, units = xunits)
+    spectra = SpecData(xdata = xdata, raw_ydata = spectra, units = xunits)
     channels['Spectra'] = ChannelData(name='Spectra', units = 'cts', spectra=spectra)
-    data = {'channel': channels, 'geometry': Geometry(N, mida), 'objects': ObjectData(laser = laser)}
+    data = {'channel': channels, 'geometry': Geometry(npixels, mida), 'objects': ObjectData(laser = laser)}
 
     return fileclass(**data)

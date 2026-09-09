@@ -52,8 +52,8 @@ class GestorImatges(BaseMenu): # Classe que gestiona les accions relacionades am
                 ch.Z = np.rot90(ch.Z, k=rot)
 
                 if spec is not None:
-                    spec.ydata = np.rot90(spec.ydata, k=rot)
-                    spec.bkgdata = np.rot90(spec.bkgdata, k=rot)
+                    spec.raw_ydata = np.rot90(spec.raw_ydata, k=rot)
+                    if spec.bkgdata is not None: spec.bkgdata = np.rot90(spec.bkgdata, k=rot)
                     spec.coords = rotate(spec.coords, g.N, rotation = rot)
 
                     for fit in spec.fits.values():
@@ -67,8 +67,8 @@ class GestorImatges(BaseMenu): # Classe que gestiona les accions relacionades am
                 ch.Z = np.flip(ch.Z, axis = 1)
 
                 if spec is not None:
-                    spec.ydata = np.flip(spec.ydata, axis = 1)
-                    spec.bkgdata = np.flip(spec.bkgdata, axis=1)
+                    spec.raw_ydata = np.flip(spec.raw_ydata, axis = 1)
+                    if spec.bkgdata is not None: spec.bkgdata = np.flip(spec.bkgdata, axis=1)
                     spec.coords = rotate(spec.coords, g.N, flip = True)
 
                     for fit in spec.fits.values():

@@ -256,6 +256,7 @@ class HeaderSpec:
 
     def on_bkg_change(self, value):
         self.spec.bkgline.set_visible(value)
+        self.channel.spectra.bkg_active = value
         self.spec.plot_data()
 
         self.spec.canvas.draw_idle()
@@ -274,11 +275,7 @@ class HeaderSpec:
         self.view.update_fits()
 
     def on_ccd_change(self, value):
-        spectra = self.channel.spectra
-        spectra.CCD_active = value
-
-        if value: spectra.ydata = (spectra.ydata - spectra.bkgdata) / spectra.CCD + spectra.bkgdata
-        else: spectra.ydata = (spectra.ydata - spectra.bkgdata) * spectra.CCD + spectra.bkgdata
+        self.channel.spectra.CCD_active = value
 
         self._update_map(self.channel)
         self.spec.plot_data()
@@ -308,7 +305,7 @@ class HeaderSpec:
         lim_inf, lim_sup = spectra.lims
         mask = ((spectra.x >= lim_inf) & (spectra.x <= lim_sup))
 
-        if self.view.widgets['bkg'].get():
+        if spectra.bkg_active:
             channel.Z = np.nansum(spectra.ydata[:, :, mask], axis=2, dtype=float)
         else:
             channel.Z = np.nansum(np.maximum(spectra.ydata[:, :, mask] - self.spec.bkg[mask], 0), axis=2, dtype=float)
@@ -541,7 +538,7 @@ class ViewHeaderSpec:
                      widget = 'entry', widget_kwargs = {"width": 10},
                      setter = self.controller.on_spectra_top_change),
 
-            'bkg': Widget(key="bkg", var_type=bool, init=True,
+            'bkg': Widget(key="bkg", var_type=bool, init=self.channel.spectra.bkg_active,
                           text="Fons:", widget='checkbutton',
                           setter = self.controller.on_bkg_change),
 
