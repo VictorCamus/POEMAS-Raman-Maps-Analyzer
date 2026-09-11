@@ -31,4 +31,24 @@ echo   ✔ ENTORN CREAT CORRECTAMENT
 echo ====================================
 echo Entorn creat a:
 echo %VENV_PATH%
+
+REM Ruta de l'escriptori
+for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "[Environment]::GetFolderPath('Desktop')"`) do (set DESKTOP=%%i)
+
+REM Fitxer que vols executar
+set TARGET=%CD%\POEMAS.py
+
+REM Ruta de Python del teu entorn virtual
+set PYTHON=%VENV_PATH%\Scripts\python.exe
+
+REM Nom de la drecera
+set SHORTCUT=%DESKTOP%\POEMAS.lnk
+
+powershell -NoProfile -Command ^
+"$s=(New-Object -COM WScript.Shell).CreateShortcut('%SHORTCUT%'); ^
+$s.TargetPath='%PYTHON%'; ^
+$s.Arguments='\"%TARGET%\"'; ^
+$s.WorkingDirectory='%CD%'; ^
+$s.IconLocation='%PYTHON%,0'; ^
+$s.Save()"
 pause

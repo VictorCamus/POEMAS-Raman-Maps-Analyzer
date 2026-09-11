@@ -123,17 +123,18 @@ class SpecView(FigureView):
         spec = self.channel.spectra
         fit_key = self.header.view.fit_key
 
-        bkg = spec.bkg.copy()
-
         if fit_key != 'rawdata':
             fit = spec.fits[fit_key]
             xfit = spec.x[fit.xrange]
+            bkg = fit.bkg(spec.coords, len(spec.y))
 
             for i, (name, peak) in enumerate(fit.peaks.items()):
                 if peak.bkg:
                     params = [param[spec.coords] for param in peak.params.values()]
 
                     if not any(np.isnan(param) for param in params): bkg[fit.xrange] += peak.ydata(xfit, spec.coords)
+
+        else: bkg = spec.bkg.copy()
 
         return bkg
 

@@ -9,6 +9,7 @@ from window import BaseWindow
 from window.widgets import Widget, Progress
 from classes.fits import FitSpec
 from process.mathfuncs import get_units, DEFAULT_PARAMS
+from process import converter as conv
 
 class GestorEspectre(BaseMenu):  # Classe que gestiona les accions relacionades amb els perfils de fletxes.
     ordre = 200
@@ -19,6 +20,7 @@ class GestorEspectre(BaseMenu):  # Classe que gestiona les accions relacionades 
     def registrar_menu(self, menu):
         accions = [
             ('Calcular fons', lambda: Fons(self)),
+            ('Desplaçar dades', lambda: ShiftX(self)),
             ('Fer ajust', lambda: FitSpec(self)),
             ('Operar amb paràmetres', lambda: ParamsOp(self)),
             ('Guardar espectre', self._guardar),
@@ -93,8 +95,13 @@ class Fons(BaseWindow):
 
     def apply_bkg(self, value):
         bkg_class = self.widgets["key"].get()
+        fit = self.spec.header.view.fit_key
+
+        if fit == 'rawdata': target = self.channel.spectra
+        else: target = self.channel.spectra.fits[fit]
+
         if bkg_class == 'nan':
-            self.channel.spectra.bkgdata = None
+            target.bkgdata = None
             return
 
         if self.widgets["map_bkg"].get() == 'one':
@@ -102,18 +109,18 @@ class Fons(BaseWindow):
             bkgdata = np.tile(self.bkg, (N[1], N[0], 1))
 
             if np.nanmax(bkgdata) <= np.iinfo(np.uint16).max:
-                self.channel.spectra.bkgdata = np.rint(bkgdata).astype(np.uint16)
+                target.bkgdata = np.rint(bkgdata).astype(np.uint16)
             else:
-                self.channel.spectra.bkgdata = np.rint(bkgdata).astype(np.uint32)
+                target.bkgdata = np.rint(bkgdata).astype(np.uint32)
 
         else:
             spec = self.channel.spectra.ydata
             total = spec.shape[0] * spec.shape[1]
 
             progress = Progress(self.window, title="Calculant fons", maximum=total)
-            threading.Thread(target=self._calculate_bkg_thread, args=(bkg_class, progress), daemon=True).start()
+            threading.Thread(target=self._calculate_bkg_thread, args=(bkg_class, progress, target), daemon=True).start()
 
-    def _calculate_bkg_thread(self, value, progress):
+    def _calculate_bkg_thread(self, value, progress, target):
         ydata = self.channel.spectra.ydata
         mask = self.file.objects.mask
         bkg_class = value
@@ -149,9 +156,9 @@ class Fons(BaseWindow):
                 bkgdata[i, j, :] = bkg
 
         if np.nanmax(bkgdata) <= np.iinfo(np.uint16).max:
-            self.channel.spectra.bkgdata = np.rint(bkgdata).astype(np.uint16)
+            target.bkgdata = np.rint(bkgdata).astype(np.uint16)
         else:
-            self.channel.spectra.bkgdata = np.rint(bkgdata).astype(np.uint32)
+            target.bkgdata = np.rint(bkgdata).astype(np.uint32)
 
         progress.finish()
 
@@ -184,6 +191,58 @@ class Fons(BaseWindow):
                        text = "Aplicar", widget = 'button',
                        setter = self.apply_bkg)
             }
+
+class ShiftX(BaseWindow):
+    def __init__(self, gestor):
+        super().__init__(gestor, "Desplaçar dades")
+
+        self.spec = self.file.view.spectrum
+
+    @property
+    def units(self):
+        return self.channel.spectra.units
+
+    def shift_x(self, value):
+        x = self.channel.spectra.x - value
+        self.spec.line.set_xdata(x)
+        self.spec.bkgline.set_xdata(x)
+
+        self.spec.canvas.draw_idle()
+
+    def apply(self, value = None):
+        xdata = self.channel.spectra.xdata
+        units = self.channel.spectra.units
+        laser = self.file.objects.laser
+
+        x = xdata[units] - self.widgets['shift'].get()
+
+        match units:
+            case 'nm':
+                xdata['nm'] = x
+                xdata['eV'] = conv.nm_to_eV(x)
+                xdata['1/cm'] = conv.nm_to_raman(x, laser)
+
+            case 'eV':
+                xdata['eV'] = x
+                xdata['nm'] = conv.eV_to_nm(x)
+                xdata['1/cm'] = conv.eV_to_raman(x, laser)
+
+            case '1/cm':
+                xdata['1/cm'] = x
+                xdata['nm'] = conv.raman_to_nm(x, laser)
+                xdata['eV'] = conv.raman_to_eV(x, laser)
+
+        self.widgets['shift'].set(0)
+
+    def _create_widgets(self):
+        self.widgets = {
+            "shift": Widget(key="shift", var_type=float, init=0,
+                     text=f"Desplaçament ({self.units}):", widget="entry",
+                     setter=self.shift_x),
+
+            "apply": Widget(key="key", var_type=str, init='Aplicar',
+                     widget="button", setter=self.apply)
+        }
 
 @dataclass
 class Operand:

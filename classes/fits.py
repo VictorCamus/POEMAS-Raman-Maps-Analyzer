@@ -73,9 +73,15 @@ class FitResult:
     name: str
     units: str
     xrange: slice = field(default_factory=slice)
+    bkgdata: np.ndarray = None
     config: FitConfig = None
     peaks: dict[str, PeakResult] = field(default_factory=dict)
     r2: np.ndarray = None
+
+    def bkg(self, coords, nzeros):
+        if self.bkgdata is None: return np.zeros(nzeros)
+
+        return self.bkgdata[*coords].astype(np.float32)
 
 class FitSpec(BaseWindow):
     def __init__(self, gestor):
@@ -110,10 +116,16 @@ class FitSpec(BaseWindow):
 
     @property
     def bkg(self):
-        bkg = np.zeros_like(self.channel.spectra.y[self.xrange])
+        spec = self.channel.spectra
+        bkg = np.zeros_like(spec.y[self.xrange])
 
         if self.spec.header.view.widgets['bkg'].get():
-            bkg = self.channel.spectra.bkg[self.xrange].copy()
+            fit = self.spec.header.view.fit_key
+            if fit == 'rawdata':
+                bkg = spec.bkg[self.xrange].copy()
+
+            else:
+                bkg = spec.fits[fit].bkg(self.channel.spectra.coords, len(spec.y))[self.xrange].copy()
 
             for peak in self.peaks.values():
                 if peak.bkg:
@@ -336,9 +348,15 @@ class FitSpec(BaseWindow):
         return linear_combination(names, funcs)
 
     def _create_fit_result(self):
+        fit = self.spec.header.view.fit_key
+
+        if fit == 'rawdata': bkgdata = self.channel.spectra.bkgdata
+        else: bkgdata = self.channel.spectra.fits[fit].bkgdata
+
         result = FitResult(name = self.widgets['name'].get(),
                            units = self.channel.spectra.units,
                            config = self.get_config(),
+                           bkgdata = bkgdata,
                            xrange = self.xrange)
 
         for name, peak in self.peaks.items():
@@ -364,7 +382,11 @@ class FitSpec(BaseWindow):
         params = init_params.copy()
 
         spectra = self.channel.spectra.ydata
-        bkg = self.channel.spectra.bkgdata
+        fit = self.spec.header.view.fit_key
+
+        if fit == 'rawdata': bkg = self.channel.spectra.bkgdata
+        else: bkg = self.channel.spectra.fits[fit].bkgdata
+
         mask = self.file.objects.mask
 
         current = 0
@@ -467,8 +489,10 @@ class FitSpec(BaseWindow):
     def _fitdata(self, value = None):
         model, init_params = self._init_fit()
         spectra = self.channel.spectra.y
+        fit = self.spec.header.view.fit_key
 
-        bkg = self.channel.spectra.bkg
+        if fit == 'rawdata': bkg = self.channel.spectra.bkg
+        else: bkg = self.channel.spectra.fits[fit].bkg(self.channel.spectra.coords)
 
         ydata = spectra[self.xrange] - bkg[self.xrange]
         result = self._fit(self.xdata, ydata, model, init_params)

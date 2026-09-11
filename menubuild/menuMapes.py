@@ -63,11 +63,11 @@ class Llindar(BaseMapWindow):
             "channel": Widget(key="channel", var_type=str, init=self.channel.name, text="Canal:",
                               widget="cb", widget_kwargs={"options": channels}, setter=self.channel_changed),
 
-            "thrInf": Widget(key="bkg", var_type=float, init=round(np.min(self.channel.Z), 3),
+            "thrInf": Widget(key="bkg", var_type=float, init=round(np.nanmin(self.channel.Z), 3),
                        text="Llindar inferior:", widget="entry",
                        setter=self.threshold),
 
-            "thrSup": Widget(key="thrSup", var_type=float, init=round(np.max(self.channel.Z), 3),
+            "thrSup": Widget(key="thrSup", var_type=float, init=round(np.nanmax(self.channel.Z), 3),
                           text="Llindar superior:", widget="entry",
                           setter=self.threshold),
 
