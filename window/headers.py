@@ -431,9 +431,6 @@ class ViewHeaderSpec:
             combo.set('')
             return
 
-        # if value not in self.peak.available_parameters():
-        #     return
-
         self._parameter = self.peak.get_parameter(value)
         self.parameter_key = value
 

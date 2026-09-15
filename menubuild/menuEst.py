@@ -15,15 +15,33 @@ class GestorEstadistica(BaseMenu):  # Classe que gestiona les accions relacionad
 
     def registrar_menu(self, menu):
         accions = [
-            ('Mostrar histogrames', lambda: self.obrir_classe(Histogrames), None),
-            ('Mitjana direccional', lambda: self.obrir_classe(DirectionMean), None)
+            ('Mostrar histogrames', lambda: self.obrir_classe(Histogrames)),
+            ('Mitjana direccional', lambda: self.obrir_classe(DirectionMean)),
+            ('Guardar dades crues', self.save_rawdata)
         ]
-        
+
         self.create_menu("Estadística", menu, accions)  # Crida a la funció comuna d'afegir menú
 
     def obrir_classe(self, classe):
         if not self.comprova_fitxer(): return
         classe(self)
+
+    def save_rawdata(self):
+        file = self.current_file
+        channel = file.current_channel
+
+        ruta = filedialog.asksaveasfilename(
+            parent = self.root,
+            defaultextension=".txt",
+            initialfile=f"{file.name} - {channel.name} Data.txt",
+            filetypes=[("TXT", "*.txt")]
+        )
+
+        if ruta:
+            x0, x1, y0, y1 = file.geometry.limit_pixels()
+            data = channel.Z[y0:y1, x0:x1].ravel()
+
+            np.savetxt(ruta, data, fmt = '%.4g')
 
 class Histogrames(BaseFigureWindow):
     def __init__(self, gestor):

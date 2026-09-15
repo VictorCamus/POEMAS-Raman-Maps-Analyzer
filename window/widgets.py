@@ -59,6 +59,8 @@ class Widget:
             key = next(key for key, val in self.widget.options.items() if val == value)
             self.widget.set(key)
 
+        if self.callback: self.callback(self.get(), self.key)
+
     def get(self):
         return self.value.get()
 

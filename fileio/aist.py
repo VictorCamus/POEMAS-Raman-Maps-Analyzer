@@ -489,7 +489,8 @@ def load(file_list, fileclass):
                          'eV': nm_to_eV(xdata_nm),
                          '1/cm': nm_to_raman(xdata_nm, d['laser'])}
 
-                spectra = d['spectra'].reshape(N[1], N[0], d['spectra'].shape[1])
+                spectra = d['spectra'].reshape(N[1], N[0], d['spectra'].shape[1]).copy()
+                spectra[spectra < 0] = 0
 
                 if np.nanmax(spectra) <= np.iinfo(np.uint16).max: spectra = spectra.astype(np.uint16)
                 else: spectra = spectra.astype(np.uint32)

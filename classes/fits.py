@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from operator import xor
 from tkinter.ttk import LabelFrame, Label
 from tkinter import messagebox
 from matplotlib.colors import TABLEAU_COLORS
@@ -24,6 +25,7 @@ class Peak:
     function: str = 'Gaussiana'
     params: dict[str, dict] = field(default_factory=dict)
     bkg: bool = False
+    unique: bool = False
 
     def ydata(self, xdata):
         param_values = {name: par['value'] for name, par in self.params.items()}
@@ -172,16 +174,19 @@ class FitSpec(BaseWindow):
                         widget='cb', widget_kwargs={'options': Functions.keys(), 'width': 10},
                         setter = self.update_func, setter_kwargs = {'peak': peak}),
 
-            'bkg': Widget(key='bkg', var_type=bool, init=peak.bkg,
-                   text = 'Fons:', widget='checkbutton',
-                   setter = self.update_bkg, setter_kwargs = {'peak': peak})}
+            'unique': Widget(key = 'unique', var_type = bool, init = peak.unique,
+                      text = 'Resoluble:', widget = 'checkbutton',
+                      setter = peak, mode = 'attr')}
 
         self.peaks_frame[peak.ref] = frame
 
         # Afegim nom i funció
         widgets['name'].add(frame, row=0, col=0)
         widgets['function'].add(frame, row=0, col=1)
-        widgets['bkg'].add(frame, row=0, col=2)
+        widgets['unique'].add(frame, row=0, col=2, columnspan = 2)
+
+        if peak.bkg: widgets['unique'].config(state = 'disabled')
+
         self.peaks_widgets[peak.ref] = widgets
 
         # Capçalera dels paràmetres
@@ -243,6 +248,32 @@ class FitSpec(BaseWindow):
             if name in old_params: peak.params[name] = old_params[name]
             else: peak.params[name] = DEFAULT_PARAMS[name].copy()
 
+        if 'x0' in FuncParams[func]: bkg_value = False
+        else: bkg_value = True
+
+        if xor(bkg_value, peak.bkg):
+            colors = list(TABLEAU_COLORS.values())
+
+            if bkg_value:
+                self.spec.fitline[peak.ref].remove()
+                self.spec.fitline.pop(peak.ref)
+                self.spec.etiquette[peak.ref].remove()
+                self.spec.etiquette.pop(peak.ref)
+            else:
+                self.spec.fitline[peak.ref] = self.spec.axis.fill_between(self.xdata, peak.ydata(self.xdata), 0,
+                                              color=colors[len(self.spec.fitline)], alpha=0.6)
+                x0 = peak.params['x0']['value']
+                idx = find_nearest(self.xdata, x0)
+                ycoord = peak.params['A']['value'] + self.bkg[idx]
+
+                self.spec.etiquette[peak.ref] = self.spec.axis.annotate(f'{peak.name}\n{x0:.2f}',
+                                                          xy=(x0, ycoord),
+                                                          xytext=(0, 10), textcoords='offset points', ha='center',
+                                                          color='k',
+                                                          fontweight='bold', family='Consolas', fontsize=14)
+            peak.bkg = bkg_value
+            self.spec.canvas.draw_idle()
+
         self._rebuild_peak_widgets(peak)
         self.update_peak(peak)
 
@@ -274,25 +305,23 @@ class FitSpec(BaseWindow):
 
         self.spec.canvas.draw_idle()
 
-    def update_bkg(self, value, peak):
-        colors = list(TABLEAU_COLORS.values())
-
-        if value:
-            self.spec.fitline[peak.ref].remove()
-            self.spec.fitline.pop(peak.ref)
-        else:
-            self.spec.fitline[peak.ref] = self.spec.axis.fill_between(self.xdata, peak.ydata(self.xdata), 0, color = colors[len(self.spec.fitline)], alpha=0.6)
-
-        peak.bkg = value
-        self.spec.canvas.draw_idle()
-
     def _rebuild_peak_widgets(self, peak):
         widget = self.peaks_widgets[peak.ref]
         for key in list(widget.keys()):
-            if key in ('name', 'function', 'bkg'): continue
+            if key in ('name', 'function'): continue
+
+            if key == 'unique':
+                if peak.bkg:
+                    widget['unique'].config(state = 'disabled')
+                    widget['unique'].set(False)
+                else:
+                    widget['unique'].config(state = 'normal')
+
+                continue
 
             if hasattr(widget[key], 'label'): widget[key].label.destroy()
             widget[key].widget.destroy()
+
             del widget[key]
 
         for row, name in enumerate(FuncParams[peak.function], start=2):
@@ -380,6 +409,26 @@ class FitSpec(BaseWindow):
         fit_result = self._create_fit_result()
 
         params = init_params.copy()
+        peakrange = dict()
+
+        for key, peak in self.peaks.items():
+            if peak.bkg: continue
+
+            if peak.unique:
+                if 'x0' not in peak.params:
+                    messagebox.showerror("Error en l'ajust",
+                                         "Les funcions que no siguen pics no poden ser resolubles.")
+                    progress.finish()
+                    return
+
+                if np.isinf(peak.params['x0']['min']) or np.isinf(peak.params['x0']['max']):
+                    messagebox.showerror("Error en l'ajust",
+                                         "Els pics marcats com a resolubles no poden tindre els límits del centre (x0) infinits.")
+                    progress.finish()
+                    return
+
+                left_index, right_index= sorted(find_nearest(self.xdata, [params[f'{key}_x0'].min, params[f'{key}_x0'].max]))
+                peakrange[key] = slice(left_index, right_index)
 
         spectra = self.channel.spectra.ydata
         fit = self.spec.header.view.fit_key
@@ -403,8 +452,24 @@ class FitSpec(BaseWindow):
 
                 if not mask[i, j]: continue
 
-                if bkg is None: ydata = spectra[i, j][self.xrange]
+                bkg_setpoint = 0
+
+                if bkg is None:
+                    ydata = spectra[i, j][self.xrange]
+                    bkg_setpoint = np.nanpercentile(ydata, 5)
                 else: ydata = spectra[i, j][self.xrange] - bkg[i, j][self.xrange]
+
+                for key, peak in self.peaks.items():
+                    if not peak.unique or peak.bkg: continue
+
+                    peak = peakrange[key]
+                    imax = np.argmax(ydata[peak])
+
+                    amp = float(ydata[peak][imax]) - bkg_setpoint
+                    x0 = float(self.xdata[peak][imax])
+
+                    params[f'{key}_A'].value = amp
+                    params[f'{key}_x0'].value = x0
 
                 result = self._fit(self.xdata, ydata, model, params)
 
@@ -431,6 +496,8 @@ class FitSpec(BaseWindow):
 
         name = self.widgets['name'].get()
         self.channel.spectra.fits[name] = fit_result
+        self.spec.header.view.fit = name
+        self.spec.header.view.widgets['fit'].set(name)
 
         self.window.after(0, self._fitmap_finished, name, progress)
 
@@ -488,11 +555,12 @@ class FitSpec(BaseWindow):
 
     def _fitdata(self, value = None):
         model, init_params = self._init_fit()
-        spectra = self.channel.spectra.y
+        spec = self.channel.spectra
+        spectra = spec.y
         fit = self.spec.header.view.fit_key
 
-        if fit == 'rawdata': bkg = self.channel.spectra.bkg
-        else: bkg = self.channel.spectra.fits[fit].bkg(self.channel.spectra.coords)
+        if fit == 'rawdata': bkg = spec.bkg
+        else: bkg = spec.fits[fit].bkg(spec.coords, len(spec.y)).copy()
 
         ydata = spectra[self.xrange] - bkg[self.xrange]
         result = self._fit(self.xdata, ydata, model, init_params)

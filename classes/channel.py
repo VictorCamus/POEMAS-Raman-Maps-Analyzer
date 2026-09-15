@@ -67,10 +67,7 @@ class SpecData:
     def ydata(self):
         ydata = self.raw_ydata.astype(np.float32)
 
-        if self.bkgdata is None: bkg = 0
-        else: bkg = self.bkgdata.astype(np.float32)
-
-        if self.CCD_active: ydata = (ydata - bkg) / self.CCD + bkg
+        if self.CCD_active: ydata /= self.CCD
 
         return ydata
 

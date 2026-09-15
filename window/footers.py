@@ -23,7 +23,7 @@ class FooterMap:
 
             self.view.widgets['track_x'].set(x_pixel+1)
             self.view.widgets['track_y'].set(y_pixel+1)
-            self.view.widgets['track_z'].set(float(f"{self.channel.Z[y_pixel, x_pixel]:.2f}"))
+            self.view.widgets['track_z'].set(float(f"{self.channel.Z[y_pixel, x_pixel]:.3f}"))
 
         else:
             for key in ['track_x', 'track_y', 'track_z']: self.view.widgets[key].set('')
@@ -69,7 +69,7 @@ class FooterSpec:
 
     def track_mouse(self, event):
         if event.inaxes == self.spec.axis:
-            self.view.widgets['track_x'].set(round(event.xdata, 2))
+            self.view.widgets['track_x'].set(f'{event.xdata:.3f}')
             self.view.widgets['track_y'].set(int(event.ydata))
 
         else:

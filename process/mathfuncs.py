@@ -32,7 +32,7 @@ def EMG_init(x0, sigma, A, tau):
 
 def _EMG_fwhm_scalar(sigma, tau):
     if not np.isfinite(sigma) or not np.isfinite(tau): return np.nan
-    if sigma <= 0 or tau <= 0: return np.nanç
+    if sigma <= 0 or tau <= 0: return np.nan
 
     K = tau / sigma
 
