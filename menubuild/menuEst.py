@@ -15,16 +15,12 @@ class GestorEstadistica(BaseMenu):  # Classe que gestiona les accions relacionad
 
     def registrar_menu(self, menu):
         accions = [
-            ('Mostrar histogrames', lambda: self.obrir_classe(Histogrames)),
-            ('Mitjana direccional', lambda: self.obrir_classe(DirectionMean)),
+            ('Mostrar histogrames', lambda: Histogrames(self)),
+            ('Mitjana direccional', lambda: DirectionMean(self)),
             ('Guardar dades crues', self.save_rawdata)
         ]
 
         self.create_menu("Estadística", menu, accions)  # Crida a la funció comuna d'afegir menú
-
-    def obrir_classe(self, classe):
-        if not self.comprova_fitxer(): return
-        classe(self)
 
     def save_rawdata(self):
         file = self.current_file

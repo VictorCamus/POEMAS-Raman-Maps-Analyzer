@@ -29,7 +29,6 @@ class GestorPerfils(BaseMenu):  # Classe que gestiona les accions relacionades a
         self.create_menu("Perfils", menu, accions)  # Crida a la funció comuna d'afegir menú
     
     def obrir_mostrar_perfils(self):
-        if not self.comprova_fitxer(): return
         if not list(key for key, f in self.files.items() if f.objects.profiles):
             messagebox.showinfo("Informació", "No hi ha cap perfil dibuixat.")
             return
@@ -37,7 +36,6 @@ class GestorPerfils(BaseMenu):  # Classe que gestiona les accions relacionades a
         MostrarPerfils(self)
 
     def _sync_prf(self):
-        if not self.comprova_fitxer(): return
         file = self.current_file
 
         if not file.objects.profiles: return
@@ -53,7 +51,6 @@ class GestorPerfils(BaseMenu):  # Classe que gestiona les accions relacionades a
             f.view.map.profiles.create_arrows()
 
     def _add_prf(self): # Afegeix un perfil de fletxa a la pestanya actual.
-        if not self.comprova_fitxer(): return
         file = self.current_file
         map = file.view.map
 
@@ -71,8 +68,6 @@ class GestorPerfils(BaseMenu):  # Classe que gestiona les accions relacionades a
                                   self.color[num % 8], on_fletxa_finalitzada=save_arrow)
         
     def _close_prf(self):
-        if not self.comprova_fitxer(): return
-
         file = self.current_file
         file.objects.profiles.clear()
         file.view.map.profiles.elimina()

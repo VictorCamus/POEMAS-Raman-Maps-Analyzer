@@ -31,7 +31,7 @@ def truncar_significatives(x, n, cap_a='amunt'):
             "El valor de 'cap_a' ha de ser 'amunt' o 'avall'"
         )
 
-    return float(truncat)
+    return float(truncat) if truncat % 1 else int(truncat)
 
 def find_nearest(array, values):
     array = np.asarray(array)

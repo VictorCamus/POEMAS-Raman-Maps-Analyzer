@@ -15,19 +15,19 @@ class GestorMapes(BaseMenu): # Classe que gestiona les accions relacionades amb 
 
     def registrar_menu(self, menu):
         accions = [
-            ("Sincronitzar límits", lambda: self.lims_sync(), None),
+            ("Sincronitzar límits", lambda: self.lims_sync()),
             ('Afegir llindar', lambda: Llindar(self)),
-            ("Operar amb canals", lambda: OperarMaps(self), None),
-            ("Ajustar mapes desplaçats", lambda: ShiftMaps(self), None),
+            ("Operar amb canals", lambda: OperarMaps(self)),
+            ("Ajustar mapes desplaçats", lambda: ShiftMaps(self)),
             ("SEPARATOR"),
-            ("Tancar canals", lambda: TancarMaps(self), None)
+            ("Tancar canals", lambda: TancarMaps(self))
         ]
         
         self.create_menu("Mapes", menu, accions)
 
     def lims_sync(self):
         file = self.current_file
-
+        
         for key, channel in file.channel.items():
             for f in self.files.values():
                 if f is file: continue

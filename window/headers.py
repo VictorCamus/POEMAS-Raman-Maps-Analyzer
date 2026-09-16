@@ -183,7 +183,7 @@ class HeaderSpec:
             return
 
         self.channel.lims[0] = value
-        self._redraw()
+        self.file.view.map.refresh_map()
 
     def on_lim_sup_change(self, value):
         if value <= self.channel.lims[0]:
@@ -194,7 +194,7 @@ class HeaderSpec:
             return
 
         self.channel.lims[1] = value
-        self._redraw()
+        self.file.view.map.refresh_map()
 
     def on_spectra_left_change(self, value):
         self.channel.spectra.lims[0] = value
@@ -280,23 +280,6 @@ class HeaderSpec:
         self._update_map(self.channel)
         self.spec.plot_data()
 
-    def _redraw(self):
-        ch = self.channel
-        map = self.spec.model.map
-
-        map.image.set_clim(*ch.lims)
-        map.cbar.limInf.set_text(f"{ch.lims[0]:g}" + (f" {ch.units}" if ch.units else ""))
-        map.cbar.limSup.set_text(f"{ch.lims[1]:g}" + (f" {ch.units}" if ch.units else ""))
-
-        update_data(map.image, ch.Z, self.spec.objects.mask)
-        map.image.set_cmap(ch.color.cmap)
-
-        map.header.view.widgets['limInf'].set(ch.lims[0])
-        map.header.view.widgets['limSup'].set(ch.lims[1])
-        map.header.view.widgets['cmap_c'].set(ch.color.cmap_c)
-
-        map.canvas.draw_idle()
-
     def _update_map(self, channel):
         if self.view.fit_key != 'rawdata': return
 
@@ -315,7 +298,7 @@ class HeaderSpec:
         self.spec.model.map.header.view.widgets["limInf"].set(channel.lims[0])
         self.spec.model.map.header.view.widgets["limSup"].set(channel.lims[1])
 
-        self._redraw()
+        self.file.view.map.refresh_map()
 
 class ViewHeaderSpec:
     def __init__(self, parent, controller):
@@ -416,7 +399,7 @@ class ViewHeaderSpec:
 
             self.widgets['parameter'].config(state = 'disabled')
             self.controller.spec.model.map.footer.view.widgets['track_z'].label.config(text = 'r2')
-            self.controller._redraw()
+            self.controller.file.view.map.refresh_map()
 
     @property
     def parameter(self):
@@ -442,7 +425,8 @@ class ViewHeaderSpec:
         self.channel.color.cmap_c = param['color']
 
         self.controller.spec.model.map.footer.view.widgets['track_z'].label.config(text = f'{self.parameter_key} ({self.channel.units})')
-        self.controller._redraw()
+        self.controller.file.view.map.refresh_map()
+
 
     def update_fits(self):
         fits = ['rawdata', *self.channel.spectra.fits]

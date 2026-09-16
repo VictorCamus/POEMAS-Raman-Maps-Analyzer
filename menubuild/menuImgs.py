@@ -19,17 +19,16 @@ class GestorImatges(BaseMenu): # Classe que gestiona les accions relacionades am
             ("Rotar en sentit horari", lambda: self._rotate(rot = 1), "<Shift-R>"),
             ("Rotar en sentit antihorari", lambda: self._rotate(rot = 3), "<Shift-L>"),
             ("Voltejar imatge", lambda: self._rotate(flip = True), "<Shift-F>"),
-            ("Sincronitzar rotació", lambda: self._rot_sync(), None),
-            ("Zoom manual", lambda: self._zoom_manual(), None),
-            ("Sincronitzar zoom", lambda: self._zoom_sync(), None),
+            ("Sincronitzar rotació", lambda: self._rot_sync()),
+            ("Zoom manual", lambda: ZoomManual(self)),
+            ("Sincronitzar zoom", lambda: self._zoom_sync()),
             ("SEPARATOR"),
-            ("Desfer zoom", lambda: self._desfer_zoom(), None)
+            ("Desfer zoom", lambda: self._desfer_zoom())
         ]
         
         self.create_menu("Operacions bàsiques", menu, accions)
 
     def _rotate(self, rot=0, flip = False, file=None):
-        if not self.comprova_fitxer(): return
         if not file: file = self.current_file
         channel = file.current_channel
         g = file.geometry
@@ -104,7 +103,6 @@ class GestorImatges(BaseMenu): # Classe que gestiona les accions relacionades am
         if file.geometry.mida[0] != file.geometry.mida[1]: file.view.resize()
 
     def _rot_sync(self):
-        if not self.comprova_fitxer(): return
         file = self.current_file
 
         for f in self.files.values():
@@ -113,13 +111,8 @@ class GestorImatges(BaseMenu): # Classe que gestiona les accions relacionades am
                 rotation = (file.geometry.rotation - f.geometry.rotation) % 4
                 rot = rotation if not f.geometry.flip else -rotation
                 self._rotate(rot = rot, flip = flip, file=f)
-
-    def _zoom_manual(self):
-        if not self.comprova_fitxer(): return
-        ZoomManual(self)
     
     def _zoom_sync(self):
-        if not self.comprova_fitxer(): return
         file = self.current_file
 
         for f in self.files.values():
@@ -131,9 +124,7 @@ class GestorImatges(BaseMenu): # Classe que gestiona les accions relacionades am
                 f.view.map.refresh_geometry()
 
     def _desfer_zoom(self): # Desfés el zoom de totes les pestanyes obertes.       
-        if not self.comprova_fitxer(): return
-        file = self.current_file
-        file.view.map.zoom.base_size()
+        self.current_file.view.map.zoom.base_size()
 
 class ZoomManual(BaseWindow):
     def __init__(self, parent):

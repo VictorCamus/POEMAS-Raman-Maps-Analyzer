@@ -236,6 +236,7 @@ class Progress:
         self.root = root
         self.value = 0
         self.maximum = maximum
+        self.last_percent = -1
 
         self.cancel_event = threading.Event()
 
@@ -259,7 +260,7 @@ class Progress:
         self.percent_label.pack(side="right", padx=(10, 0))
 
         self.cancel_button = Button(self.win, text="Cancel·lar", command=self.cancel)
-        self.cancel_button.pack(anchor = "e", padx = 20, pady = 5)
+        self.cancel_button.pack(anchor="e", padx=20, pady=5)
 
         self.bar["maximum"] = maximum
 
@@ -271,9 +272,21 @@ class Progress:
 
         percent = int((self.value / self.maximum) * 100)
 
+        # Només actualitzar la GUI cada 5 %
+        percent = min(percent, 100)
+        reported_percent = (percent // 5) * 5
+
+        if reported_percent == self.last_percent:
+            return
+
+        self.last_percent = reported_percent
+
         def _update():
+            if not self.win.winfo_exists():
+                return
+
             self.bar["value"] = self.value
-            self.percent_label.config(text=f"{percent} %")
+            self.percent_label.config(text=f"{reported_percent} %")
 
             if text is not None:
                 self.label.config(text=text)
@@ -295,7 +308,8 @@ class Progress:
 
     def finish(self, text="Finalitzat ✔"):
         def _finish():
-            if not self.win.winfo_exists(): return
+            if not self.win.winfo_exists():
+                return
 
             self.label.config(text=text)
             self.cancel_button.config(state="disabled")

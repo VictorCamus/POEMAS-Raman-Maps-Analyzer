@@ -19,15 +19,15 @@ class GestorArxiu(BaseMenu):  # Classe que gestiona les accions del menú "Arxiu
         
     def registrar_menu(self, menu): # Registra les accions del menú "Arxiu" a l'aplicació.
         accions = [
-            ("Obrir fitxer", lambda: self._open_file(), '<Control-o>'),
-            ("Obrir sessió", lambda: self._open_session(), '<Control-Shift-O>'),
+            ("Obrir fitxer", lambda: self._open_file(), '<Control-o>', False),
+            ("Obrir sessió", lambda: self._open_session(), '<Control-Shift-O>', False),
             ("SEPARATOR"),
             ("Guardar fitxer", lambda: self.save_file(func = self._save), '<Control-g>'),
             ("Guardar tots els fitxers", lambda: self.save_file(func = self._save, tots = True), '<Control-Shift-G>'),
             ("Guardar sessió", lambda: self._save_session(), '<Control-s>'),
             ("SEPARATOR"),
             ("Tancar fitxer", lambda: self._close_file(), '<Control-t>'),
-            ("Eixir", self.root.quit, '<Escape>'),
+            ("Eixir", self.root.quit, '<Escape>', False),
         ]
         
         self.create_menu("Arxiu", menu, accions)  # Crida a la funció comuna d'afegir menú
@@ -83,7 +83,6 @@ class GestorArxiu(BaseMenu):  # Classe que gestiona les accions del menú "Arxiu
         if self.current_file is None: self.set_file(file)
 
     def _save(self, file):  # Guarda les dades de totes les pestanyes obertes en fitxers.
-        if not self.condicions_guardar(file): return False
         file.folder.mkdir(parents=True, exist_ok=True)
 
         map = file.view.map
@@ -94,6 +93,7 @@ class GestorArxiu(BaseMenu):  # Classe que gestiona les accions del menú "Arxiu
 
         map.refresh_map(file.current_channel)
         h5.save(Path(f'{file.folder}.h5'), file)
+        
         return True
     
     def _save_session(self):
@@ -106,8 +106,7 @@ class GestorArxiu(BaseMenu):  # Classe que gestiona les accions del menú "Arxiu
     
     def _close_file(self): # Tanca el fitxer actual i neteja les dades associades.
         file = self.current_file
-        if not file: return
-
+        
         figure = file.view.map.figure
         figure.clf()
         close(figure)

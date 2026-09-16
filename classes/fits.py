@@ -497,7 +497,6 @@ class FitSpec(BaseWindow):
         name = self.widgets['name'].get()
         self.channel.spectra.fits[name] = fit_result
         self.spec.header.view.fit = name
-        self.spec.header.view.widgets['fit'].set(name)
 
         self.window.after(0, self._fitmap_finished, name, progress)
 
@@ -507,6 +506,7 @@ class FitSpec(BaseWindow):
         combofit.options[name] = name
         combofit.config(values=list(combofit.options.keys()))
 
+        self.spec.header.view.widgets['fit'].set(name)
         progress.finish()
 
     def _init_fit(self):

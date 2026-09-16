@@ -430,6 +430,7 @@ class ParamsOp(BaseWindow):
 
         self.channel.units = get_units(dim, self.fit.units)
         self.channel.update_lims()
+
         self.file.view.map.refresh_map(self.channel)
 
     @staticmethod

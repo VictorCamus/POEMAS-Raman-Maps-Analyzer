@@ -1,5 +1,5 @@
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from tkinter import Toplevel
+from tkinter import Toplevel, messagebox
 from tkinter.ttk import Frame
 from drawing import mapdraw as map
 from drawing.plots import base_plot
@@ -9,7 +9,9 @@ from process.images import copy_figure
 
 class BaseWindow:
     def __init__(self, gestor, title):
-        self._file, self._channel = gestor.current_file, gestor.current_file.current_channel
+        self._file = gestor.current_file 
+        self._channel = self._file.current_channel
+        
         self.files = gestor.files
 
         self.notebook = gestor.notebook
@@ -175,6 +177,8 @@ class BaseMapWindow(BaseWindow):
         dimensions = map.get_dimensions(self.axis, self.file.geometry.rect)
         map.set_dimensions(self.canvas, self.escala, self.cbar, self.file.geometry.rect, *dimensions)
 
+        return True
+        
     def file_changed(self, value):
         self.file = value
         self.channel_changed(self.widgets['channel'].get())

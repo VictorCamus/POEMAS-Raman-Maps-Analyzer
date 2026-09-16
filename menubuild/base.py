@@ -5,40 +5,9 @@ from matplotlib.pyplot import close
 from window.widgets import Progress
 from drawing.plots import base_plot
 
-class Condicions: # Mixin per a comprovar condicions abans d'executar accions.
-    def comprova_fitxer(self): # Comprova si hi ha pestanyes obertes al notebook.
-        if not self.current_file:
-            messagebox.showinfo("Informació", "No hi ha cap fitxer obert.")
-            return False
-        return True
-
-    def mascara_comprova(self, file): # Comprova si hi ha una màscara activa.
-        if hasattr(file, 'mask'):
-            messagebox.showinfo("Informació", "Lleva la màscara abans de continuar.")
-            return False
-        return True
-
-    def fletxes_comprova(self, file): # Comprova si hi ha fletxes dibuixades a les pestanyes.
-        if hasattr(file,'fletxa'):
-            messagebox.showinfo("Informació", "No es poden guardar fitxers amb fletxes dibuixades.")
-            return False
-        return True
-
-    def grain_comprova(self, file): # Comprova si hi ha una pestanya GRAIN oberta.
-        if 'GRAIN' not in file.channel:
-            messagebox.showinfo("Informació", "No hi ha cap arxiu GRAIN associat.")
-            return False
-        return True
-
-    def condicions_guardar(self, file): # Comprova si es compleixen les condicions per a guardar un fitxer.
-        return (
-            self.mascara_comprova(file) and
-            self.fletxes_comprova(file)
-        )
-
 REGISTRE_GESTORS = []
     
-class BaseMenu(Condicions):  # Classe base per a gestionar les accions comunes de l'aplicació.
+class BaseMenu:  # Classe base per a gestionar les accions comunes de l'aplicació.
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         REGISTRE_GESTORS.append(cls)
@@ -65,21 +34,22 @@ class BaseMenu(Condicions):  # Classe base per a gestionar les accions comunes d
                 continue
 
             text, func = accio[0], accio[1]
-            tecla = accio[2] if len(accio) == 3 else None
+            tecla = accio[2] if len(accio) > 2 else None
+            need_file = accio[3] if len(accio) > 3 else True
 
+            if need_file: func_menu = lambda f=func: f() if self.comprova_fitxer() else None
+            else: func_menu = func
+            
             accelerator_text = None
             if tecla:
                 accelerator_text = tecla.replace("<", "").replace(">", "")
                 self.root.bind(tecla, lambda event, f=func: f())
 
-            submenu.add_command(label=text, command=func, accelerator=accelerator_text)
+            submenu.add_command(label=text, command=func_menu, accelerator=accelerator_text)
 
         menu.add_cascade(label=etiqueta, menu=submenu)
 
     def save_file(self, func, tots=False):
-        if not self.comprova_fitxer():
-            return
-
         if tots:
             files = list(self.files.values())
         else:
@@ -100,3 +70,9 @@ class BaseMenu(Condicions):  # Classe base per a gestionar les accions comunes d
 
         self.root.after(0, self.current_file.view.map.refresh_map)
         close(fig)
+    
+    def comprova_fitxer(self): # Comprova si hi ha pestanyes obertes al notebook.
+        if not self.current_file:
+            messagebox.showinfo("Informació", "No hi ha cap fitxer obert.")
+            return False
+        return True
