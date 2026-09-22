@@ -3,6 +3,7 @@ from numpy.typing import NDArray
 from dataclasses import dataclass, field
 from typing import Dict
 
+from drawing.colormap import cmaps
 from classes.fits import FitResult
 from process.basics import set_lims, find_nearest
 
@@ -16,7 +17,8 @@ class ChannelData:  # Crea canals per a cada tipus de mapa dins d'un fitxer.
     spectra: SpecData = None
 
     def __post_init__(self):
-        if self.color is None: self.color = Colors(self.name)
+        if self.color is None: 
+            self.color = Colors(self.name) if self.name in cmaps else Colors('jet')
 
         if self.Z is None and self.spectra.ydata is not None:
             self.Z = np.nansum(self.spectra.ydata, axis = 2, dtype=float)

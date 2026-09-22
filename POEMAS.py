@@ -32,13 +32,8 @@ class Aplicacio: # Classe principal de l'aplicació que gestiona la interfície 
         self._current_file = file
 
     def _init_message(self): # Mostra un missatge inicial quan s'obre l'aplicació.
-        self.label_inici = ttk.Label(
-            self.root,
-            text="Carrega un fitxer per a començar.",
-            font=("Arial", 24),
-            anchor='center',
-            justify='center'
-        )
+        self.label_inici = ttk.Label(self.root, text="Carrega un fitxer per a començar.", 
+                           font=("Arial", 24), anchor='center', justify='center')
         self.label_inici.place(relx=0.5, rely=0.5, anchor='center')
 
     def _init_menu(self):

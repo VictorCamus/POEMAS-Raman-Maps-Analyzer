@@ -104,8 +104,8 @@ class MapView(FigureView):
         self.escala.color = ch.color.scale
         self.image.set_clim(*ch.lims)
         
-        self.header.view.widgets['limInf'].set(ch.lims[0])
         self.header.view.widgets['limSup'].set(ch.lims[1])
+        self.header.view.widgets['limInf'].set(ch.lims[0])
         self.header.view.widgets['cmap_c'].set(ch.color.cmap_c)
         
         self.canvas.draw_idle()

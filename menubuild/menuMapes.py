@@ -8,22 +8,17 @@ from process.shiftphase import cross_correlation_shift
 from window.widgets import create_tab, Widget
 
 class GestorMapes(BaseMenu): # Classe que gestiona les accions relacionades amb el zoom de les imatges.
-    ordre = 40 # Atribut per a ordenar els menús (opcional)
-    
-    def __init__(self, app):
-        super().__init__(app)
+    ordre = 4 # Atribut per a ordenar els menús (opcional)
 
     def registrar_menu(self, menu):
-        accions = [
-            ("Sincronitzar límits", lambda: self.lims_sync()),
-            ('Afegir llindar', lambda: Llindar(self)),
-            ("Operar amb canals", lambda: OperarMaps(self)),
-            ("Ajustar mapes desplaçats", lambda: ShiftMaps(self)),
-            ("SEPARATOR"),
-            ("Tancar canals", lambda: TancarMaps(self))
-        ]
+        self.add_tab(text = "Sincronitzar límits", func = self.lims_sync)
+        self.add_tab(text = 'Afegir llindar', func = Llindar, args = (self,))
+        self.add_tab(text = "Operar amb canals", func = OperarMaps, args = (self,))
+        self.add_tab(text = "Ajustar mapes desplaçats", func = ShiftMaps, args = (self,))
+        self.add_tab()
+        self.add_tab(text = "Tancar canals", func = TancarMaps, args = (self,))
         
-        self.create_menu("Mapes", menu, accions)
+        menu.add_cascade(label = "Mapes", menu = self.submenu)
 
     def lims_sync(self):
         file = self.current_file
@@ -120,8 +115,8 @@ class OperarMaps(BaseWindow):
 
         for f in files:
             if f is file_ref: continue
-                        
-            if not np.array_equal(file_ref.geometry.N, f.geometry.N) or not np.array_equal(file_ref.geometry.midaBase, f.geometry.midaBase):
+            
+            if not np.array_equal(file_ref.geometry.N, f.geometry.N) or not np.allclose(file_ref.geometry.midaBase, f.geometry.midaBase):
                 return False
 
             ch = f.channel[self.channel_key]
@@ -236,10 +231,12 @@ class ShiftMaps(BaseWindow):
             y1 = int(round((roi_global[3] - shifts[f.name][1]) / py))
 
             f.geometry.N = np.array([x1 - x0, y1 - y0])
-            f.geometry.midaBase = np.array([f.geometry.N[0] * px, f.geometry.N[1] * py])
+            f.geometry.midaBase = np.round(np.array([f.geometry.N[0] * px, f.geometry.N[1] * py]), decimals = 12)
             for ch in f.channel.values(): ch.Z = ch.Z[y0:y1, x0:x1]
 
             for prof in f.objects.profiles.values(): prof.line = [(x - x0, y - y0) for x, y in prof.line]
+            f.objects.mask = f.objects.mask[y0:y1, x0:x1]
+
             f.view.map.zoom.base_size()
 
 class TancarMaps(BaseWindow):

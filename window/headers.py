@@ -183,7 +183,7 @@ class HeaderSpec:
             return
 
         self.channel.lims[0] = value
-        self.file.view.map.refresh_map()
+        self.spec.model.map.refresh_map()
 
     def on_lim_sup_change(self, value):
         if value <= self.channel.lims[0]:
@@ -194,7 +194,7 @@ class HeaderSpec:
             return
 
         self.channel.lims[1] = value
-        self.file.view.map.refresh_map()
+        self.spec.model.map.refresh_map()
 
     def on_spectra_left_change(self, value):
         self.channel.spectra.lims[0] = value
@@ -298,7 +298,7 @@ class HeaderSpec:
         self.spec.model.map.header.view.widgets["limInf"].set(channel.lims[0])
         self.spec.model.map.header.view.widgets["limSup"].set(channel.lims[1])
 
-        self.file.view.map.refresh_map()
+        self.spec.model.map.refresh_map()
 
 class ViewHeaderSpec:
     def __init__(self, parent, controller):
@@ -399,7 +399,7 @@ class ViewHeaderSpec:
 
             self.widgets['parameter'].config(state = 'disabled')
             self.controller.spec.model.map.footer.view.widgets['track_z'].label.config(text = 'r2')
-            self.controller.file.view.map.refresh_map()
+            self.controller.spec.model.map.refresh_map()
 
     @property
     def parameter(self):
@@ -425,7 +425,7 @@ class ViewHeaderSpec:
         self.channel.color.cmap_c = param['color']
 
         self.controller.spec.model.map.footer.view.widgets['track_z'].label.config(text = f'{self.parameter_key} ({self.channel.units})')
-        self.controller.file.view.map.refresh_map()
+        self.controller.spec.model.map.refresh_map()
 
 
     def update_fits(self):

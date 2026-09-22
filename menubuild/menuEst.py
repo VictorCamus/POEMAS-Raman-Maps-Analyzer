@@ -8,19 +8,14 @@ from process.statistics import hist, boxplot, remove_boxplot
 from .base import BaseMenu
 
 class GestorEstadistica(BaseMenu):  # Classe que gestiona les accions relacionades amb els perfils de fletxes.
-    ordre = 50 # Atribut per a ordenar els menús (opcional)
-    
-    def __init__(self, app):
-        super().__init__(app)  # Inicialitza la classe base
+    ordre = 5 # Atribut per a ordenar els menús (opcional)
 
     def registrar_menu(self, menu):
-        accions = [
-            ('Mostrar histogrames', lambda: Histogrames(self)),
-            ('Mitjana direccional', lambda: DirectionMean(self)),
-            ('Guardar dades crues', self.save_rawdata)
-        ]
+        self.add_tab(text = 'Mostrar histogrames', func = Histogrames, args = (self,))
+        self.add_tab(text = 'Mitjana direccional', func = DirectionMean, args = (self,))
+        self.add_tab(text = 'Guardar dades crues', func = self.save_rawdata)
 
-        self.create_menu("Estadística", menu, accions)  # Crida a la funció comuna d'afegir menú
+        menu.add_cascade(label="Estadística", menu=self.submenu)  # Crida a la funció comuna d'afegir menú
 
     def save_rawdata(self):
         file = self.current_file

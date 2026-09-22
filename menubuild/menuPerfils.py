@@ -10,23 +10,18 @@ from classes.objects import ProfileData
 from process.basics import get_line
 
 class GestorPerfils(BaseMenu):  # Classe que gestiona les accions relacionades amb els perfils de fletxes.
-    ordre = 30
-    
-    def __init__(self, app):
-        super().__init__(app)  # Inicialitza la classe base
-
-        self.color = ['r','b','g','orange','y','cyan','pink','k']
+    ordre = 3
 
     def registrar_menu(self, menu):
-        accions = [
-            ('Afegir', lambda: self._add_prf(), '<Shift-P>'),
-            ('Sincronitzar perfils', lambda: self._sync_prf(), None),
-            ('Mostrar perfils', lambda: self.obrir_mostrar_perfils(), None),
-            ('SEPARATOR'),
-            ('Esborrar', lambda: self._close_prf(), '<Control-Alt-p>'),
-        ]
+        self.color = ['r','b','g','orange','y','cyan','pink','k']
+
+        self.add_tab(text = 'Afegir', func = self._add_prf, shortcut = 'Shift-P')
+        self.add_tab(text = 'Sincronitzar perfils', func = self._sync_prf)
+        self.add_tab(text = 'Mostrar perfils', func = self.obrir_mostrar_perfils)
+        self.add_tab()
+        self.add_tab(text = 'Esborrar', func = self._close_prf, shortcut = 'Control-Alt-p')
         
-        self.create_menu("Perfils", menu, accions)  # Crida a la funció comuna d'afegir menú
+        menu.add_cascade(label = "Perfils", menu = self.submenu)  # Crida a la funció comuna d'afegir menú
     
     def obrir_mostrar_perfils(self):
         if not list(key for key, f in self.files.items() if f.objects.profiles):

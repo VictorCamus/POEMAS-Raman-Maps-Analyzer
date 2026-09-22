@@ -12,21 +12,16 @@ from process.mathfuncs import get_units, DEFAULT_PARAMS
 from process import converter as conv
 
 class GestorEspectre(BaseMenu):  # Classe que gestiona les accions relacionades amb els perfils de fletxes.
-    ordre = 200
-    
-    def __init__(self, app):
-        super().__init__(app)  # Inicialitza la classe base
+    ordre = 6
 
     def registrar_menu(self, menu):
-        accions = [
-            ('Calcular fons', lambda: Fons(self)),
-            ('Desplaçar dades', lambda: ShiftX(self)),
-            ('Fer ajust', lambda: FitSpec(self)),
-            ('Operar amb paràmetres', lambda: ParamsOp(self)),
-            ('Guardar espectre', self._guardar),
-        ]
+        self.add_tab(text = 'Calcular fons', func = Fons, args = (self,))
+        self.add_tab(text = 'Desplaçar dades', func = ShiftX, args = (self,))
+        self.add_tab(text = 'Fer ajust', func = FitSpec, args = (self,))
+        self.add_tab(text = 'Operar amb paràmetres', func = ParamsOp, args = (self,))
+        self.add_tab(text = 'Guardar espectre', func = self._guardar)
         
-        self.create_menu("Espectre", menu, accions)  # Crida a la funció comuna d'afegir menú
+        menu.add_cascade(label = "Espectre", menu = self.submenu)  # Crida a la funció comuna d'afegir menú
 
     def _guardar(self): # Guarda els perfils dibuixats en fitxers de perfil.
         spec = self.current_file.view.spectrum

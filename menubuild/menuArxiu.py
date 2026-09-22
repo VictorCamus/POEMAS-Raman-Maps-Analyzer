@@ -13,61 +13,49 @@ from dataclasses import is_dataclass, fields
 
 class GestorArxiu(BaseMenu):  # Classe que gestiona les accions del menú "Arxiu" de l'aplicació.
     ordre = 0 # Atribut per a ordenar els menús (opcional)
-    
-    def __init__(self, app):
-        super().__init__(app)  # Inicialitza la classe base
-        
+
     def registrar_menu(self, menu): # Registra les accions del menú "Arxiu" a l'aplicació.
-        accions = [
-            ("Obrir fitxer", lambda: self._open_file(), '<Control-o>', False),
-            ("Obrir sessió", lambda: self._open_session(), '<Control-Shift-O>', False),
-            ("SEPARATOR"),
-            ("Guardar fitxer", lambda: self.save_file(func = self._save), '<Control-g>'),
-            ("Guardar tots els fitxers", lambda: self.save_file(func = self._save, tots = True), '<Control-Shift-G>'),
-            ("Guardar sessió", lambda: self._save_session(), '<Control-s>'),
-            ("SEPARATOR"),
-            ("Tancar fitxer", lambda: self._close_file(), '<Control-t>'),
-            ("Eixir", self.root.quit, '<Escape>', False),
-        ]
+        self.add_tab(text = "Obrir fitxer", func = self._open_file, shortcut = 'Control-o', file_check = False)
+        self.add_tab(text = "Guardar fitxer", func = self._save_file, shortcut = 'Control-g')
+        self.add_tab(text = "Guardar sessió", func = self._save_session, shortcut = 'Control-s')
+        self.add_tab()
+        self.add_tab(text = "Tancar fitxer", func = self._close_file, shortcut = 'Control-t')
+        self.add_tab(text = "Eixir", func = self.root.quit, shortcut = 'Escape', file_check = False)
         
-        self.create_menu("Arxiu", menu, accions)  # Crida a la funció comuna d'afegir menú
+        menu.add_cascade(label="Arxiu", menu=self.submenu)  # Crida a la funció comuna d'afegir menú
 
     def _open_file(self): # Obre un fitxer AIST i carrega les dades en el notebook.
-        filepaths = filedialog.askopenfilenames(
-                    filetypes = [("H5", "*.h5"), ("AIST", "*.aist"), ("WSxM", ["*.top", "*.Auxfeed"]),
-                                 ("TXTRAMAN", "*.txt")])
+        filepaths = filedialog.askopenfilenames(filetypes = [("H5", "*.h5"), ("AIST", "*.aist"), 
+                                                ("WSxM", ["*.top", "*.Auxfeed"]), ("TXTRAMAN", "*.txt"), ("Sessió", "*.hdf5")])
 
         if not filepaths: return
 
-        self.label_inici.place_forget()
         groups = defaultdict(list)
 
         for fp in filepaths:
             fp = Path(fp)
-            format = fp.suffix
+            fmt = fp.suffix
 
-            match format:
+            if fmt == '.hdf5' and len(filepaths) > 1:
+                messagebox.showerror("Obrir fitxer", "Les sessions només poden obrir-se individualment")
+                return
+
+            match fmt:
                 case '.top' | '.Auxfeed':
                     base = fp.name.split('.', 1)[0]
-                    format = '.wsxm'
+                    fmt = '.wsxm'
                 case _: base = fp.stem
 
             groups[base].append(fp)
+        
+        for filename, filepath in groups.items():
+            file = open_file(fmt, file_list = filepath, fileclass = FileData)
+            if fmt == '.hdf5':
+                for name, f in file.items(): self._add_file(name, f, filepath[0].parent)
+            
+            else: self._add_file(filename, file, filepath[0].parent)
 
-        for filename, files in groups.items():
-            file = open_file(format, file_list = files, fileclass = FileData)
-            self._add_file(filename, file, files[0].parent)
-
-    def _open_session(self):  # Obre un fitxer AIST i carrega les dades en el notebook.
-        filepath = filedialog.askopenfilename(filetypes=[("Sessió", "*.hdf5")])
-        if not filepath: return
-
-        filepath = Path(filepath)
         self.label_inici.place_forget()
-
-        files = open_file(".hdf5", file_list = [filepath], fileclass = FileData)
-        for name, file in files.items():
-            self._add_file(name, file, filepath.parent)
 
     def _add_file(self, name, file, parent):
         if name in self.files:
@@ -82,23 +70,15 @@ class GestorArxiu(BaseMenu):  # Classe que gestiona les accions del menú "Arxiu
 
         if self.current_file is None: self.set_file(file)
 
-    def _save(self, file):  # Guarda les dades de totes les pestanyes obertes en fitxers.
+    def _save_file(self):  # Guarda les dades de totes les pestanyes obertes en fitxers.
+        file = self.current_file
+
         file.folder.mkdir(parents=True, exist_ok=True)
-
-        map = file.view.map
-
-        for channelKey, ch in file.channel.items():
-            map.refresh_map(ch)
-            map.figure.savefig(f"{file.folder}/{channelKey}.png", bbox_inches='tight')
-
-        map.refresh_map(file.current_channel)
         h5.save(Path(f'{file.folder}.h5'), file)
         
         return True
     
     def _save_session(self):
-        if not self.comprova_fitxer(): return
-        
         ruta = filedialog.asksaveasfilename(parent = self.notebook, defaultextension=".hdf5", initialfile=f"Sessió1.hdf5",
             filetypes=[("HDF5", "*.hdf5")])
         
@@ -164,7 +144,6 @@ def object_size(obj, seen=None):
         )
 
     return sys.getsizeof(obj)
-
 
 def memory_report(obj):
     """Mostra la mida de cada instància/atribut de forma jeràrquica."""

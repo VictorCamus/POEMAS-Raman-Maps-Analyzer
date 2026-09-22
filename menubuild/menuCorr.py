@@ -7,19 +7,14 @@ from .base import BaseMenu
 from window.widgets import Widget
 
 class GestorCorreccio(BaseMenu):  # Classe que gestiona les accions relacionades amb els perfils de fletxes.
-    ordre = 20 # Atribut per a ordenar els menús (opcional)
-    
-    def __init__(self, app):
-        super().__init__(app)  # Inicialitza la classe base
+    ordre = 2 # Atribut per a ordenar els menús (opcional)
 
     def registrar_menu(self, menu):
-        accions = [
-            ('Reescalar', lambda: RescaleMaps(self), None),
-            ('Aplanar mapes', lambda: LevelMaps(self), None),
-            ('Corregir enganxons', lambda: RescaleMaps(self), None)
-        ]
+        self.add_tab(text = 'Reescalar', func = RescaleMaps, args = (self,))
+        self.add_tab(text = 'Aplanar mapes', func = LevelMaps, args = (self,))
+        self.add_tab(text = 'Corregir enganxons', func = RescaleMaps, args = (self,))
         
-        self.create_menu("Correcció", menu, accions)  # Crida a la funció comuna d'afegir menú
+        menu.add_cascade(label = "Correcció", menu = self.submenu)  # Crida a la funció comuna d'afegir menú
 
 class RescaleMaps(BaseMapWindow):
     def __init__(self, gestor):

@@ -9,24 +9,19 @@ from window.widgets import Widget
 from drawing.mapdraw import update_data
 
 class GestorImatges(BaseMenu): # Classe que gestiona les accions relacionades amb el zoom de les imatges.
-    ordre = 10 # Atribut per a ordenar els menús (opcional)
-    
-    def __init__(self, app):
-        super().__init__(app)
+    ordre = 1 # Atribut per a ordenar els menús (opcional)
         
     def registrar_menu(self, menu):
-        accions = [
-            ("Rotar en sentit horari", lambda: self._rotate(rot = 1), "<Shift-R>"),
-            ("Rotar en sentit antihorari", lambda: self._rotate(rot = 3), "<Shift-L>"),
-            ("Voltejar imatge", lambda: self._rotate(flip = True), "<Shift-F>"),
-            ("Sincronitzar rotació", lambda: self._rot_sync()),
-            ("Zoom manual", lambda: ZoomManual(self)),
-            ("Sincronitzar zoom", lambda: self._zoom_sync()),
-            ("SEPARATOR"),
-            ("Desfer zoom", lambda: self._desfer_zoom())
-        ]
+        self.add_tab(text = "Rotar en sentit horari", func = self._rotate, kwargs = {'rot': 1}, shortcut = "Shift-R")
+        self.add_tab(text = "Rotar en sentit antihorari", func = self._rotate, kwargs = {'rot': 3}, shortcut = "Shift-L")
+        self.add_tab(text = "Voltejar imatge", func = self._rotate, kwargs = {'flip': True}, shortcut = "Shift-F")
+        self.add_tab(text = "Sincronitzar rotació", func = self._rot_sync)
+        self.add_tab(text = "Zoom manual", func = ZoomManual, args = (self,))
+        self.add_tab(text = "Sincronitzar zoom", func = self._zoom_sync)
+        self.add_tab()
+        self.add_tab(text = "Desfer zoom", func = self._desfer_zoom)
         
-        self.create_menu("Operacions bàsiques", menu, accions)
+        menu.add_cascade(label = "Operacions bàsiques", menu = self.submenu)
 
     def _rotate(self, rot=0, flip = False, file=None):
         if not file: file = self.current_file

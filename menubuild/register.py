@@ -3,18 +3,13 @@ import importlib
 
 from .base import REGISTRE_GESTORS
 
-def _upload_modules(): # Carrega els mòduls de la carpeta actual que comencen per "menu" i els importa
-    carpeta = Path(__file__).parent
-
-    for file in carpeta.glob("menu*.py"):
-        if file.name == "__init__.py": continue
-
-        nom_modul = file.stem  # sense .py
-        importlib.import_module(f"{__package__}.{nom_modul}")
-        
 class BuildMenu:
     def __init__(self, app):
-        _upload_modules()
+        carpeta = Path(__file__).parent
+
+        for file in sorted(carpeta.glob("menu*.py")):
+            importlib.import_module(f"{__package__}.{file.stem}")
+
         for cls in sorted(REGISTRE_GESTORS, key=lambda c: getattr(c, "ordre", 100)):
             nom = cls.__name__.replace("Gestor", "").lower()
 
