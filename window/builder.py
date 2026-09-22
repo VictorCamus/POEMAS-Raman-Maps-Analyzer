@@ -1,25 +1,18 @@
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from tkinter import Toplevel, messagebox
 from tkinter.ttk import Frame
+
 from drawing import mapdraw as map
 from drawing.plots import base_plot
 from process.images import copy_figure
+from window.mixin import FileChannelMixin, FitPeakParameterMixin
 
 # Arxiu que gestiona els builders principals dels menús de l'aplicació, així com les finestres i funcionalitats comunes a tots els builders.
 
-class BaseWindow:
+class BaseWindow(FileChannelMixin):
     def __init__(self, gestor, title):
-        self._file = gestor.current_file 
-        self._channel = self._file.current_channel
-        
-        self.files = gestor.files
+        super().__init__(gestor)
 
-        self.notebook = gestor.notebook
-        self.label_inici = gestor.label_inici
-
-        self.file_key = self.file.name; self.channel_key = self.channel.name
-
-        self._file_ref = None
         self.intersect = True
         self.update = True
 
@@ -39,103 +32,6 @@ class BaseWindow:
         self._create_widgets()
 
         for i, widget in enumerate(self.widgets.values()): widget.add(self.control_frame, row=i, col=0)
-
-    @property
-    def file(self):
-        return self._file
-    
-    @file.setter
-    def file(self, value):
-        if value != "Tots els mapes": self._file = self.files[value]
-        self.file_key = value
-        self.update_channels()
-
-    @property
-    def file_ref(self):
-        return self._file_ref
-    
-    @file_ref.setter
-    def file_ref(self, value):
-        self._file_ref = self.files[value]
-        self.update_channels()
-        
-    @property
-    def channel(self):
-        return self._channel
-    
-    @channel.setter
-    def channel(self, value):
-        if value is None: return
-        if value in self.file.channel: self._channel = self.file.channel[value]
-        self.channel_key = value
-
-        if self.file_key == "Tots els mapes": return
-        
-        if self.update: self.file.view.selector.select(self.channel.tab)
-
-    def files_list(self):
-        if self.file_key == "Tots els mapes":
-            files = list(self.files.values())
-        else:
-            files = [self.file]
-            if self.file_ref is not None and self.file_ref is not self.file: files.append(self.file_ref)
-            if self.update: self.notebook.select(self.file.view.tab)
-
-        return files
-    
-    def compare_files(self):
-        list_files = ["Tots els mapes"] + list(self.files.keys())
-        self._file_ref = self.files[list_files[1]]
-        
-        channels = list(self.file_ref.channel.keys() & self.file.channel.keys())
-        
-        if self.channel.name in channels: initCh = self.channel.name
-        else: initCh = channels[0]
-
-        return list_files, channels, initCh
-    
-    def update_channels(self):
-        if not hasattr(self, 'file') or not hasattr(self, 'widgets'): return
-        if not "channel" in self.widgets: return
-
-        files = self.files_list()
-        channels = list(files[0].channel)
-
-        if self.intersect:
-            common = set.intersection(*(set(f.channel) for f in files))
-            channels = [ch for ch in channels if ch in common]
-        else:
-            for f in files[1:]:
-                for ch in f.channel:
-                    if ch not in channels:
-                        channels.append(ch)
-
-        self.update_channel_combobox(channels)
-
-    def update_files(self, files):
-        comboFile = self.widgets["file"]
-        comboFile.config(values=files)
-        comboFile.set(self.file.name)
-
-    def update_channel_combobox(self, channels):
-        comboCh = self.widgets["channel"]
-        current = self.channel
-
-        comboCh.config(values=channels)
-        comboCh.widget.options = dict(zip(channels, channels))
-
-        if current.name in channels:
-            comboCh.set(current.name)
-            self.channel = current.name
-            return
-        
-        elif channels:
-            comboCh.set(channels[0])
-            self.channel = channels[0]
-            return
-        else:
-            comboCh.set("")
-            return
 
     @staticmethod
     def _init_figure(main_frame, figure):
@@ -242,3 +138,7 @@ class BaseFigureWindow(BaseWindow):
         self.figure.tight_layout()
 
         self.fig_frame, self.canvas = self._init_figure(self.main_frame, self.figure)
+
+class BaseSpecWindow(BaseWindow, FitPeakParameterMixin):
+    def __init__(self, gestor, title):
+        super().__init__(gestor, title)

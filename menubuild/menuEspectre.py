@@ -5,8 +5,9 @@ from tkinter import ttk, messagebox
 from dataclasses import dataclass
 
 from .base import BaseMenu
-from window import BaseWindow
+from window import BaseWindow, BaseSpecWindow
 from window.widgets import Widget, Progress
+from window.mixin import FitPeakParameterMixin
 from classes.fits import FitSpec
 from process.mathfuncs import get_units, DEFAULT_PARAMS
 from process import converter as conv
@@ -251,7 +252,7 @@ class Operand:
             return "Operand buit"
         return f"{self.peak}.{self.parameter}"
 
-class ParamsOp(BaseWindow):
+class ParamsOp(BaseSpecWindow):
     def __init__(self, gestor):
         self.operands: list[dict] = []
         self.tokens: list[Operand | str] = []
@@ -289,103 +290,9 @@ class ParamsOp(BaseWindow):
                                       setter = self.calculate)
         self.widgets['calc'].add(self.control_frame, row = row + 2, col = 2)
 
-    @property
-    def fit(self):
-        return self._fit
-
-    @fit.setter
-    def fit(self, value):
-        spec = self.channel.spectra
-
-        self._fit = spec.fits[value]
-        self.fit_key = value
-
-        # En canviar de fit, seleccionem el primer pic
-        self._peak = next(iter(self.fit.peaks.values()))
-        self.peak_key = self.peak.ref
-
-        if self.parameter_key in self.peak.parameter_names: self._parameter = self.peak.get_parameter(self.parameter_key)
-        else: self.parameter_key, self._parameter = next(iter(self.peak.params.items()))
-
-        self.update_peaks()
-
-    @property
-    def peak(self):
-        return self._peak
-
-    @peak.setter
-    def peak(self, value):
-        self._peak = self.fit.peaks[value]
-        self.peak_key = value
-
-        # En canviar de pic, seleccionem el primer paràmetre
-
-        if self.parameter_key in self.peak.parameter_names: self._parameter = self.peak.get_parameter(self.parameter_key)
-        else: self.parameter_key, self._parameter = next(iter(self.peak.params.items()))
-
-        self.widgets['parameter'].config(state='readonly')
-        self.update_params()
-
-    @property
-    def parameter(self):
-        return self._parameter
-
-    @parameter.setter
-    def parameter(self, value):
-        self._parameter = self.peak.get_parameter(value)
-        self.parameter_key = value
-
-        self.channel.Z = self._parameter
+    def _on_parameter_selected(self):
+        self.channel.Z = self.parameter
         self.channel.update_lims()
-
-    def update_fits(self):
-        fits = ['rawdata', *self.channel.spectra.fits]
-
-        combo = self.widgets["fit"].widget
-        combo.config(values=fits)
-        combo.options = dict(zip(fits, fits))
-
-        if self.fit_key in fits:
-            combo.set(self.fit_key)
-            self.fit = self.fit_key
-        else:
-            combo.set(fits[0])
-            self.fit = fits[0]
-
-    def update_peaks(self):
-        if self.fit is None or not self.fit.peaks or not hasattr(self, 'widgets'):
-            return
-
-        refs = list(self.fit.peaks)
-        peaks = [peak.name for peak in self.fit.peaks.values()]
-        mm = dict(zip(refs, peaks))
-        combo = self.widgets["peak"].widget
-        combo.config(values=peaks)
-        combo.options = dict(zip(peaks, refs))
-
-        if self.peak_key in self.fit.peaks:
-            combo.set(mm[self.peak_key])
-            self.peak = self.peak_key
-        else:
-            combo.set(refs[0])
-            self.peak = refs[0]
-
-    def update_params(self):
-        if self.peak is None or not self.peak.params or not hasattr(self, 'widgets'):
-            return
-
-        params = self.peak.parameter_names
-
-        combo = self.widgets["parameter"].widget
-        combo.config(values=params)
-        combo.options = dict(zip(params, params))
-
-        if self.parameter_key in params:
-            combo.set(self.parameter_key)
-            self.parameter = self.parameter_key
-        else:
-            combo.set(params[0])
-            self.parameter = params[0]
 
     def _operand_to_expression(self, value):
         operand = Operand(fit=self.fit_key, peak=self.peak.name, parameter=self.parameter_key)

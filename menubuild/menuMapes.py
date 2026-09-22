@@ -263,8 +263,7 @@ class TancarMaps(BaseWindow):
                     self.files.pop(f.name, None)
                     
                     if not self.files:
-                        self.label_inici.place(relx=0.5, rely=0.5, anchor='center')
-                        
+                        self.notebook.lower()
                         return
                     
                     self.file = next(iter(self.files))

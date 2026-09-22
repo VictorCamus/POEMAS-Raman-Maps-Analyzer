@@ -17,7 +17,6 @@ class BaseMenu:  # Classe base per a gestionar les accions comunes de l'aplicaci
         self.files = app.files
         self.root = app.root
         self.notebook = app.notebook
-        self.label_inici = app.label_inici
 
         self.get_file = app.get_file
         self.set_file = app.set_file

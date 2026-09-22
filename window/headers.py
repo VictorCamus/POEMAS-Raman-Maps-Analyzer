@@ -1,8 +1,8 @@
 import numpy as np
-
 from tkinter.ttk import Frame
 from tkinter import messagebox
 
+from window.mixin import FitPeakParameterMixin
 from .widgets import Widget
 from drawing.colormap import cmaps
 from drawing.mapdraw import update_data
@@ -300,7 +300,10 @@ class HeaderSpec:
 
         self.spec.model.map.refresh_map()
 
-class ViewHeaderSpec:
+class ViewHeaderSpec(FitPeakParameterMixin):
+    include_rawdata = True
+    include_r2 = True
+    
     def __init__(self, parent, controller):
         self.controller = controller
 
@@ -313,169 +316,83 @@ class ViewHeaderSpec:
     def channel(self):
         return self.controller.channel
 
-    @property
-    def fit(self):
-        return self._fit
-
-    @fit.setter
-    def fit(self, value):
+    def _on_fit_selected(self):
         spec = self.channel.spectra
 
-        if value in spec.fits:
-            self._fit = spec.fits[value]
-            self.fit_key = value
+        spec.units = self.fit.units
 
-            # En canviar de fit, seleccionem el primer pic
-            self._peak = next(iter(self.fit.peaks.values()))
-            self.peak_key = self.peak.ref
+        self.widgets['units'].set(spec.units)
+        self.widgets['units'].config(state='disabled')
 
-            if self.parameter_key in self.peak.parameter_names: self._parameter = self.peak.get_parameter(self.parameter_key)
-            else: self.parameter_key, self._parameter = next(iter(self.peak.params.items()))
+        start = round(spec.x[self.fit.xrange.start], 3)
+        stop = round(spec.x[self.fit.xrange.stop], 3)
 
-            spec.units = self._fit.units
-            self.widgets['units'].set(spec.units)
-            self.widgets['units'].config(state = 'disabled')
+        spec.lims = [start, stop] if start < stop else [stop, start]
 
-            start, stop = round(spec.x[self.fit.xrange.start], 3), round(spec.x[self.fit.xrange.stop], 3)
-            spec.lims = [start, stop] if start < stop else [stop, start]
-            self.widgets['left'].set(spec.lims[0])
-            self.widgets['right'].set(spec.lims[1])
+        self.widgets['left'].set(spec.lims[0])
+        self.widgets['right'].set(spec.lims[1])
 
-            self.widgets['peak'].config(state = 'readonly')
-            self.widgets['parameter'].config(state='readonly')
-            self.controller.spec.axis.set_xlim(spec.lims)
+        self.widgets['peak'].config(state='readonly')
+        self.widgets['parameter'].config(state='readonly')
 
-            self.update_peaks()
+        self.controller.spec.axis.set_xlim(spec.lims)
 
-        elif value == 'rawdata':
-            self.fit_key = 'rawdata'
-            self.peak_key, self.peak = None, None
-            self.parameter_key, self.parameter = None, None
+    def _on_rawdata_selected(self):
+        spec = self.channel.spectra
 
-            self.widgets['units'].config(state = 'readonly')
-            self.widgets['peak'].config(state = 'disabled')
-            self.widgets['parameter'].config(state='disabled')
-            self.channel.color.cmap_c = 'Spectra'
-            self.channel.units = 'a.u'
+        self.widgets['units'].config(state='readonly')
+        self.widgets['peak'].config(state='disabled')
+        self.widgets['parameter'].config(state='disabled')
 
-            self.controller.spec.model.map.footer.view.widgets['track_z'].label.config(text=f'{self.channel.name} ({self.channel.units})')
-            self.controller._update_map(self.channel)
+        self.channel.color.cmap_c = 'Spectra'
+        self.channel.units = 'a.u'
 
-        self.controller.spec.plot_data()
+        self.controller.spec.model.map.footer.view.widgets[
+            'track_z'
+        ].label.config(
+            text=f'{self.channel.name} ({self.channel.units})'
+        )
 
-    @property
-    def peak(self):
-        return self._peak
+        self.controller._update_map(self.channel)
 
-    @peak.setter
-    def peak(self, value):
-        if value is None:
-            combo = self.widgets['peak'].widget
-            combo.config(values = [])
-            combo.options = {}
-            combo.set('')
+    def _on_r2_selected(self):
+        self.channel.Z = self.fit.r2
+        self.channel.update_lims()
 
-            return
+        self.channel.color.cmap_c = 'jet'
+        self.channel.units = ''
 
-        if value in self.fit.peaks:
-            self._peak = self.fit.peaks[value]
-            self.peak_key = value
+        self.widgets['parameter'].config(state='disabled')
 
-            # En canviar de pic, seleccionem el primer paràmetre
+        self.controller.spec.model.map.footer.view.widgets[
+            'track_z'
+        ].label.config(text='r2')
 
-            if self.parameter_key in self.peak.parameter_names: self._parameter = self.peak.get_parameter(self.parameter_key)
-            else: self.parameter_key, self._parameter = next(iter(self.peak.params.items()))
+        self.controller.spec.model.map.refresh_map()
 
-            self.widgets['parameter'].config(state='readonly')
-            self.update_params()
+    def _on_peak_selected(self):
+        self.widgets['parameter'].config(state='readonly')
 
-        elif value == 'r2':
-            self.parameter_key, self.parameter = None, None
-
-            self.channel.Z = self.fit.r2
-            self.channel.update_lims()
-            self.channel.color.cmap_c = 'jet'
-            self.channel.units = ''
-
-            self.widgets['parameter'].config(state = 'disabled')
-            self.controller.spec.model.map.footer.view.widgets['track_z'].label.config(text = 'r2')
-            self.controller.spec.model.map.refresh_map()
-
-    @property
-    def parameter(self):
-        return self._parameter
-
-    @parameter.setter
-    def parameter(self, value):
-        if value is None:
-            combo = self.widgets['parameter'].widget
-            combo.config(values = [])
-            combo.options = {}
-            combo.set('')
-            return
-
-        self._parameter = self.peak.get_parameter(value)
-        self.parameter_key = value
-
-        self.channel.Z = self._parameter
+    def _on_parameter_selected(self):
+        self.channel.Z = self.parameter
         self.channel.update_lims()
 
         param = DEFAULT_PARAMS[self.parameter_key]
-        self.channel.units = get_units(dim = param['dim'], units = self.channel.spectra.units)
+
+        self.channel.units = get_units(
+            dim=param['dim'],
+            units=self.channel.spectra.units
+        )
+
         self.channel.color.cmap_c = param['color']
 
-        self.controller.spec.model.map.footer.view.widgets['track_z'].label.config(text = f'{self.parameter_key} ({self.channel.units})')
+        self.controller.spec.model.map.footer.view.widgets[
+            'track_z'
+        ].label.config(
+            text=f'{self.parameter_key} ({self.channel.units})'
+        )
+
         self.controller.spec.model.map.refresh_map()
-
-
-    def update_fits(self):
-        fits = ['rawdata', *self.channel.spectra.fits]
-
-        combo = self.widgets["fit"].widget
-        combo.config(values=fits)
-        combo.options = dict(zip(fits, fits))
-
-        if self.fit_key in fits:
-            combo.set(self.fit_key)
-            self.fit = self.fit_key
-        else:
-            combo.set(fits[0])
-            self.fit = fits[0]
-
-    def update_peaks(self):
-        if self.fit is None or not self.fit.peaks or not hasattr(self, 'widgets'):
-            return
-
-        refs = [*self.fit.peaks.keys(), 'r2']
-        peaks = [*[peak.name for peak in self.fit.peaks.values()], 'r2']
-        mm = dict(zip(refs, peaks))
-        combo = self.widgets["peak"].widget
-        combo.config(values=peaks)
-        combo.options = dict(zip(peaks, refs))
-
-        if self.peak_key in self.fit.peaks:
-            combo.set(mm[self.peak_key])
-            self.peak = self.peak_key
-        else:
-            combo.set(refs[0])
-            self.peak = refs[0]
-
-    def update_params(self):
-        if self.peak is None or not self.peak.params or not hasattr(self, 'widgets'):
-            return
-
-        params = self.peak.parameter_names
-
-        combo = self.widgets["parameter"].widget
-        combo.config(values=params)
-        combo.options = dict(zip(params, params))
-
-        if self.parameter_key in params:
-            combo.set(self.parameter_key)
-            self.parameter = self.parameter_key
-        else:
-            combo.set(params[0])
-            self.parameter = params[0]
 
     def _create_widgets(self):
         self._fit, self._peak, self._parameter = None, None, None

@@ -29,7 +29,8 @@ class GestorArxiu(BaseMenu):  # Classe que gestiona les accions del menú "Arxiu
                                                 ("WSxM", ["*.top", "*.Auxfeed"]), ("TXTRAMAN", "*.txt"), ("Sessió", "*.hdf5")])
 
         if not filepaths: return
-
+        if not self.files: self.notebook.lift()
+        
         groups = defaultdict(list)
 
         for fp in filepaths:
@@ -54,8 +55,6 @@ class GestorArxiu(BaseMenu):  # Classe que gestiona les accions del menú "Arxiu
                 for name, f in file.items(): self._add_file(name, f, filepath[0].parent)
             
             else: self._add_file(filename, file, filepath[0].parent)
-
-        self.label_inici.place_forget()
 
     def _add_file(self, name, file, parent):
         if name in self.files:
@@ -99,7 +98,7 @@ class GestorArxiu(BaseMenu):  # Classe que gestiona les accions del menú "Arxiu
                 break
 
         if not self.files:
-            self.label_inici.place(relx=0.5, rely=0.5, anchor='center')
+            self.notebook.lower()
             self.set_file(None)
 
 def object_size(obj, seen=None):
