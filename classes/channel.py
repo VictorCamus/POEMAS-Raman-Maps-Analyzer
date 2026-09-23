@@ -38,7 +38,7 @@ class SpecData:
     raw_ydata: np.ndarray = None
     bkgdata: np.ndarray = None
     units: str = None
-    lims: list[float] = None
+    lims: NDArray[np.floating] | None = None
     CCD: np.ndarray = None
     bkg_active: bool = True
     CCD_active: bool = False

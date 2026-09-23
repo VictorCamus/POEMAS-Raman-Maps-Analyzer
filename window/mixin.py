@@ -135,6 +135,9 @@ class FitPeakParameterMixin(SelectorMixin):
         self.peak_key = None
         self.parameter_key = None
 
+        self.include_rawdata = False
+        self.include_r2 = False
+        
     @property
     def fit(self):
         return self._fit

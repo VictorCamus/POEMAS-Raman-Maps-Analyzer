@@ -324,13 +324,14 @@ class ParamsOp(BaseSpecWindow):
             return
 
         try:
-            self.channel.Z, dim = self.evaluate()
+            self.channel.Z, (dim, au) = self.evaluate()
+            self.channel.units = get_units(dim = dim, units = self.fit.units, au = au)
 
         except Exception as exc:
             messagebox.showerror("Error en l'operació", str(exc))
             return
 
-        self.channel.units = get_units(dim, self.fit.units)
+        self.channel.units = get_units(dim = dim, units = self.fit.units)
         self.channel.update_lims()
 
         self.file.view.map.refresh_map(self.channel)
@@ -381,8 +382,9 @@ class ParamsOp(BaseSpecWindow):
 
                 data = peak.get_parameter(token.parameter)
                 dim = DEFAULT_PARAMS[token.parameter]["dim"]
+                au = 1 if dim == 0 else 0
 
-                values.append((data, dim))
+                values.append((data, (dim, au)))
 
             elif token in {"+", "-", "*", "/", "(", ")"}:
                 values.append(token)
@@ -469,7 +471,15 @@ class ParamsOp(BaseSpecWindow):
         return stack[0]
 
     @staticmethod
-    def _combine_dimensions(left: int, operator: str, right: int) -> int:
+    def _combine_dimensions(
+        left: tuple[int, int],
+        operator: str,
+        right: tuple[int, int],
+    ) -> tuple[int, int]:
+
+        left_dim, left_audim = left
+        right_dim, right_audim = right
+
         if operator in {"+", "-"}:
             if left != right:
                 raise ValueError(
@@ -479,10 +489,16 @@ class ParamsOp(BaseSpecWindow):
             return left
 
         if operator == "*":
-            return left + right
+            return (
+                left_dim + right_dim,
+                left_audim + right_audim,
+            )
 
         if operator == "/":
-            return left - right
+            return (
+                left_dim - right_dim,
+                left_audim - right_audim,
+            )
 
         raise ValueError(f"Operador no vàlid: {operator}")
 

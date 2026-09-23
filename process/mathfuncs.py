@@ -9,10 +9,10 @@ def lorentz(x: float, x0: float, gamma: float, A: float) -> float:
 def gaussian(x: float, x0: float, sigma: float, A: float) -> float:
     return A * np.exp(-((x - x0) / sigma) ** 2 / 2)
 
-def voigt(x, x0, sigma, gamma, area):
+def voigt(x, x0, sigma, gamma, area) -> float:
     return area * voigt_profile(x - x0, sigma, gamma)
 
-def voigt_init(x0, sigma, gamma, A):
+def voigt_init(x0: float, sigma: float, gamma: float, A: float) -> dict:
     area = A * sigma * np.sqrt(2 * np.pi) / erfcx(gamma / (sigma * np.sqrt(2)))
     params = {'x0': x0, 'sigma': sigma, 'gamma': gamma, 'area': area}
 
@@ -21,7 +21,7 @@ def voigt_init(x0, sigma, gamma, A):
 def EMG(x, mean_g, sigma, area, K):
     return area * exponnorm.pdf(x, K=K, loc=mean_g, scale=sigma)
 
-def EMG_init(x0, sigma, A, tau):
+def EMG_init(x0: float, sigma: float, A: float, tau: float) -> dict:
     K = tau / sigma
     mean_g = x0 + sigma * np.sqrt(2) * erfcxinv(K * np.sqrt(2 / np.pi)) - sigma / K
 
@@ -191,25 +191,28 @@ INIT_PARAMS = {'EMG': EMG_init, 'Voigt': voigt_init}
 
 DEFAULT_PARAMS = {
     'x0':    {'value': 0.0,    'min': -np.inf, 'max': np.inf, 'vary': True, 'color': 'viridis', 'dim': 1},
-    'sigma': {'value': 1.0,    'min': 0.0,     'max': np.inf, 'vary': True, 'color': 'magma', 'dim': 1},
-    'gamma': {'value': 1.0,    'min': 0.0,     'max': np.inf, 'vary': True, 'color': 'plasma', 'dim': 1},
+    'sigma': {'value': 1.0,    'min': 0.0,     'max': np.inf, 'vary': True, 'color': 'magma',   'dim': 1},
+    'gamma': {'value': 1.0,    'min': 0.0,     'max': np.inf, 'vary': True, 'color': 'plasma',  'dim': 1},
     'A':     {'value': 1000.0, 'min': 0.0,     'max': np.inf, 'vary': True, 'color': 'hot',     'dim': 0},
     'tau':   {'value': 10,     'min': 0.0,     'max': np.inf, 'vary': True, 'color': 'reds',    'dim': 1},
     'a0':    {'value': 0.0,    'min': 0.0,     'max': np.inf, 'vary': True, 'color': 'gray',    'dim': 0},
-    'a1':    {'value': 0.0,    'min': -np.inf, 'max': np.inf, 'vary': True, 'color': 'blues',   'dim': -1},
-    'a2':    {'value': 0.0,    'min': -np.inf, 'max': np.inf, 'vary': True, 'color': 'oranges', 'dim': -2},
+    'a1':    {'value': 0.0,    'min': -np.inf, 'max': np.inf, 'vary': True, 'color': 'blues',   'dim': 0},
+    'a2':    {'value': 0.0,    'min': -np.inf, 'max': np.inf, 'vary': True, 'color': 'oranges', 'dim': 0},
     'FWHM':  {'color': 'cividis', 'dim': 1},
-    'Àrea':  {'color': 'inferno', 'dim': 1}
+    'Àrea':  {'color': 'inferno', 'dim': 0}
 }
 
-def get_units(dim: int, units: str) -> str:
+def get_units(dim: int = 0, units: str = '', au: int = 0) -> str:
+    superscript = str.maketrans("0123456789-", "⁰¹²³⁴⁵⁶⁷⁸⁹⁻")
+
+    if au != 0:
+        return "a.u."
+
     if dim == 0:
         return ""
 
     if dim == 1:
         return units
-
-    superscript = str.maketrans("0123456789-", "⁰¹²³⁴⁵⁶⁷⁸⁹⁻")
 
     return f"{units}{str(dim).translate(superscript)}"
 

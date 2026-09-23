@@ -480,8 +480,7 @@ class FitSpec(BaseWindow):
                 yfit = model(self.xdata, result.params)
                 r2 = self._r2(ydata, yfit)
 
-                if (not result.success
-                    or any(p.stderr is None for p in result.params.values()) or r2 < 0.5):
+                if (not result.success or any(p.stderr is None for p in result.params.values()) or r2 < 0.5):
                     params = init_params.copy()
                     continue
 

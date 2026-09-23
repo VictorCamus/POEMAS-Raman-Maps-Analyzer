@@ -35,8 +35,7 @@ def ajust_eixos(ax): # Elimina els eixos del mapa
     ax.set_facecolor('none') # Lleva el fons.
     ax.set_autoscale_on(True)
 
-def update_map(image, cmap, Z, lims, units,
-               mida = None, colLims = ('w', 'k'), cbar = None, mask = None):
+def update_map(image, cmap, Z, lims, units, mida = None, colLims = ('w', 'k'), cbar = None, mask = None):
     vmin, vmax = lims
     
     if cmap == 'GRAIN': Z = (Z > 0).astype(int)  # Matriu binària: 1 si és un gra, 0 si no

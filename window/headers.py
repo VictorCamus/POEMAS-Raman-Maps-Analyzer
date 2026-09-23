@@ -378,12 +378,10 @@ class ViewHeaderSpec(FitPeakParameterMixin):
         self.channel.update_lims()
 
         param = DEFAULT_PARAMS[self.parameter_key]
+         
+        au = 1 if param['dim'] == 0 else 0
 
-        self.channel.units = get_units(
-            dim=param['dim'],
-            units=self.channel.spectra.units
-        )
-
+        self.channel.units = get_units(dim=param['dim'], units=self.channel.spectra.units, au = au)
         self.channel.color.cmap_c = param['color']
 
         self.controller.spec.model.map.footer.view.widgets[
