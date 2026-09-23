@@ -161,7 +161,9 @@ def convert_z_data(Z, meta):
 def load(file, fileclass):
     type_map = {'.top': 'Height', '.Auxfeed': 'CPD', '.ch15': 'Mag', '.ch16': 'Phase'}
 
-    name = type_map[file.suffix]
+    if file.suffix in type_map: name = type_map[file.suffix]
+    else: name = file.suffix
+
     Z, meta = load_wsxm(file)
 
     Ny, Nx = Z.shape

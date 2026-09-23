@@ -74,7 +74,7 @@ class FigureView(ABC):
 class MapView(FigureView):
 
     def _create_plot(self):
-        self.figure, self.axis, self.image, self.cbar = mapdraw.create_map(self.channel.name, self.channel.Z,
+        self.figure, self.axis, self.image, self.cbar = mapdraw.create_map(self.channel.color.cmap, self.channel.Z,
                                                                        self.channel.lims, self.channel.units, self.geometry.midaBase)
 
         self.escala = mapdraw.Escala(self.axis)
