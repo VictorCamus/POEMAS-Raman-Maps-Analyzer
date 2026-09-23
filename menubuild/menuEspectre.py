@@ -33,13 +33,9 @@ class GestorEspectre(BaseMenu):  # Classe que gestiona les accions relacionades 
 
         ruta = folder / 'Spectra'
         ruta.mkdir(parents=True, exist_ok=True)
-        nom = ruta / f'{folder.stem}_{posx}_{posy}'
+        nom = ruta / f'{folder.stem}_{posx+1}_{posy+1}'
 
-        header = '\t'.join([
-            f'{"Xdata (" + channel.spectra.units + ")":>12}',
-            f'{"I (a.u.)":>12}',
-            f'{"Bkg (a.u.)":>12}'
-        ])
+        header = '\t'.join([f'{"Xdata (" + channel.spectra.units + ")":>12}', f'{"I (a.u.)":>12}', f'{"Bkg (a.u.)":>12}'])
         np.savetxt(f'{nom}.txt', np.c_[channel.spectra.x, channel.spectra.y, channel.spectra.bkg],
             header=header, delimiter='\t', fmt='%12.4f\t%12.2f\t%12.2f')
 

@@ -86,7 +86,6 @@ def get_lateral_size(meta, Nx, Ny):
 
     x_amp = meta.get("Control::X Amplitude")
     y_amp = meta.get("Control::Y Amplitude")
-    z_amp = meta.get("General Info::Z Amplitude")
 
     if x_amp:
         midaX, _ = parse_value_unit(x_amp)
@@ -98,22 +97,16 @@ def get_lateral_size(meta, Nx, Ny):
     else:
         midaY = Ny  # fallback
 
-    if z_amp:
-        _, units = parse_value_unit(z_amp)
-    else:
-        units = None
-
-    return [round(midaX, 3), round(midaY, 3)], units
+    return [round(midaX, 3), round(midaY, 3)]
 
 def read_data_field(buffer, xres, yres, dtype):
-    if dtype == "double":
-        data = np.frombuffer(buffer, dtype=np.float64).copy()
-    elif dtype == "float":
-        data = np.frombuffer(buffer, dtype=np.float32).copy()
-    else:
-        raise ValueError(f"Tipus desconegut: {dtype}")
+    match dtype:
+        case "double": data = np.frombuffer(buffer, dtype=np.float64).copy()
+        case "float": data = np.frombuffer(buffer, dtype=np.float32).copy()
+        case "short": data = np.frombuffer(buffer, dtype=np.int16).copy()
+        case _: raise ValueError(f"Tipus desconegut: {dtype}")
 
-    data = data.reshape((yres, xres))
+    data = data.reshape((yres, xres)).astype(np.float32)
     data = np.flipud(np.fliplr(data))
 
     return data
@@ -139,12 +132,31 @@ def load_wsxm(filename):
         raise ValueError("Falten dimensions")
 
     dtype = meta.get("General Info::Image Data Type", "double")
-
     binary_data = data[header_end:]
 
     image = read_data_field(binary_data, xres, yres, dtype)
 
     return image, meta
+
+def convert_z_data(Z, meta):
+    z_amp = meta.get("General Info::Z Amplitude")
+
+    if not z_amp:
+        return Z, None
+
+    parts = z_amp.split()
+    amplitude = float(parts[0])
+    units = parts[1] if len(parts) > 1 else None
+
+    zmin = Z.min()
+    zmax = Z.max()
+
+    if zmax == zmin:
+        return Z, units
+
+    Z = Z * amplitude / (zmax - zmin)
+
+    return Z, units
 
 def load(file_list, fileclass):
     type_map = {'.top': 'Height', '.Auxfeed': 'CPD', '.ch15': 'Mag', '.ch16': 'Phase'}
@@ -156,7 +168,10 @@ def load(file_list, fileclass):
         Z, meta = load_wsxm(file)
 
         Ny, Nx = Z.shape
-        mida, units = get_lateral_size(meta, Nx, Ny)
+        mida = get_lateral_size(meta, Nx, Ny)
+
+        Z, units = convert_z_data(Z, meta)
+
         N = Nx, Ny
 
         channels[name] = ChannelData(name=name, Z=Z, units = units)
