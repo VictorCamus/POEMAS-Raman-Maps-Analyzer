@@ -130,7 +130,7 @@ class OperarMaps(BaseWindow):
             tab = create_tab(f.view.selector, self.new_chname)
 
             f.channel[self.new_chname] = ChannelData(self.new_chname, zNew, units)
-            f.channel[self.new_chname].tab = tab
+            f.view.channel_tabs[self.new_chname] = tab
             
         return True
 
@@ -145,7 +145,7 @@ class OperarMaps(BaseWindow):
             return
 
         if self.file_key != "Tots els mapes" and self.new_chname in list(self.file.channel):
-            self.file.view.selector.select(self.file.channel[self.new_chname].tab)
+            self.file.view.selector.select(self.file.view.channel_tabs[self.new_chname])
 
 class ShiftMaps(BaseWindow):
     def __init__(self, gestor):
@@ -252,7 +252,7 @@ class TancarMaps(BaseWindow):
         for f in files:
             if self.channel_key not in f.channel: continue 
         
-            f.view.selector.forget(f.channel[self.channel_key].tab)
+            f.view.selector.forget(f.view.channel_tabs[self.channel_key])
             f.channel.pop(self.channel_key, None)
 
             if not f.channel:
@@ -272,8 +272,8 @@ class TancarMaps(BaseWindow):
                 self.update_files(files)
 
         self.update_channels()
-        first_channel = next(iter(self.file.channel.values()))
-        self.file.view.selector.select(first_channel.tab)
+        first_channel = next(iter(self.file.channel.keys()))
+        self.file.view.selector.select(self.file.view.channel_tabs[first_channel])
 
     def _create_widgets(self):
         files = ['Tots els mapes'] + list(self.files.keys())

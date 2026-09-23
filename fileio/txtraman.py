@@ -2,8 +2,7 @@ import numpy as np
 from process.converter import raman_to_nm, raman_to_eV, nm_to_raman, nm_to_eV, eV_to_raman, eV_to_nm
 from classes import ChannelData, Geometry, ObjectData, SpecData
 
-def load(file_list, fileclass):
-    file = file_list[0]
+def load(file, fileclass):
     with open(file) as f:
         is_laser = True
         for linia in f:

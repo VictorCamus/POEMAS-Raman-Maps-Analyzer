@@ -158,23 +158,20 @@ def convert_z_data(Z, meta):
 
     return Z, units
 
-def load(file_list, fileclass):
+def load(file, fileclass):
     type_map = {'.top': 'Height', '.Auxfeed': 'CPD', '.ch15': 'Mag', '.ch16': 'Phase'}
-    channels = {}
 
-    for file in file_list:
-        name = type_map[file.suffix]
+    name = type_map[file.suffix]
+    Z, meta = load_wsxm(file)
 
-        Z, meta = load_wsxm(file)
+    Ny, Nx = Z.shape
+    mida = get_lateral_size(meta, Nx, Ny)
 
-        Ny, Nx = Z.shape
-        mida = get_lateral_size(meta, Nx, Ny)
+    Z, units = convert_z_data(Z, meta)
 
-        Z, units = convert_z_data(Z, meta)
+    N = Nx, Ny
 
-        N = Nx, Ny
+    channel = {name: ChannelData(name=name, Z=Z, units = units)}
 
-        channels[name] = ChannelData(name=name, Z=Z, units = units)
-
-    data = {'channel': channels, 'geometry': Geometry(N, mida), 'objects': ObjectData()}
+    data = {'channel': channel, 'geometry': Geometry(N, mida), 'objects': ObjectData()}
     return fileclass(**data)

@@ -75,7 +75,7 @@ class FileChannelMixin(SelectorMixin):
 
         if self.file_key == "Tots els mapes": return
         
-        if self.update: self.file.view.selector.select(self.channel.tab)
+        if self.update: self.file.view.selector.select(self.file.view.channel_tabs[self._channel.name])
 
     def files_list(self):
         if self.file_key == "Tots els mapes":

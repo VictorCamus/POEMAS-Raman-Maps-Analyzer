@@ -1,3 +1,6 @@
+import sys
+import numpy as np
+from dataclasses import is_dataclass, fields
 from pathlib import Path
 from collections import defaultdict
 from tkinter import filedialog, messagebox
@@ -6,10 +9,7 @@ from matplotlib.pyplot import close
 from fileio import open_file, h5
 from classes.file import FileData, FileView
 from .base import BaseMenu
-
-import sys
-import numpy as np
-from dataclasses import is_dataclass, fields
+from window.widgets import create_tab
 
 class GestorArxiu(BaseMenu):  # Classe que gestiona les accions del menú "Arxiu" de l'aplicació.
     ordre = 0 # Atribut per a ordenar els menús (opcional)
@@ -25,8 +25,8 @@ class GestorArxiu(BaseMenu):  # Classe que gestiona les accions del menú "Arxiu
         menu.add_cascade(label="Arxiu", menu=self.submenu)  # Crida a la funció comuna d'afegir menú
 
     def _open_file(self): # Obre un fitxer AIST i carrega les dades en el notebook.
-        filepaths = filedialog.askopenfilenames(filetypes = [("H5", "*.h5"), ("AIST", "*.aist"), 
-                                                ("WSxM", ["*.top", "*.Auxfeed"]), ("TXTRAMAN", "*.txt"), ("Sessió", "*.hdf5")])
+        filepaths = filedialog.askopenfilenames(filetypes = [("Tots els arxius", ["*.aist", "*.txt", "*.h5", "*.hdf5", "*.top", "*.Auxfeed", "*.ch15", "*.ch16"]), 
+                                                ("AIST", "*.aist"), ("TXTRAMAN", "*.txt"), ("H5", "*.h5"),  ("WSxM", ["*.top", "*.Auxfeed"]), ("Sessió", "*.hdf5")])
 
         if not filepaths: return
         if not self.files: self.notebook.lift()
@@ -37,28 +37,28 @@ class GestorArxiu(BaseMenu):  # Classe que gestiona les accions del menú "Arxiu
             fp = Path(fp)
             fmt = fp.suffix
 
-            if fmt == '.hdf5' and len(filepaths) > 1:
-                messagebox.showerror("Obrir fitxer", "Les sessions només poden obrir-se individualment")
-                return
-
             match fmt:
-                case '.top' | '.Auxfeed':
-                    base = fp.name.split('.', 1)[0]
-                    fmt = '.wsxm'
+                case '.top' | '.Auxfeed' | '.ch15' | '.ch16': base = f'{fp.name.split('.')[0]}.{fp.name.split('.')[1]}'
                 case _: base = fp.stem
 
-            groups[base].append(fp)
-        
-        for filename, filepath in groups.items():
-            file = open_file(fmt, file_list = filepath, fileclass = FileData)
+            file = open_file(format = fmt, file = fp, fileclass = FileData)
             if fmt == '.hdf5':
-                for name, f in file.items(): self._add_file(name, f, filepath[0].parent)
+                for name, f in file.items(): self._add_file(name = name, file = file, parent = fp.parent)
             
-            else: self._add_file(filename, file, filepath[0].parent)
+            else: self._add_file(name = base, file = file, parent = fp.parent)
 
     def _add_file(self, name, file, parent):
         if name in self.files:
-            messagebox.showinfo("Informació", f"El fitxer «{name}» ja està obert.")
+            curr_file = self.files[name]
+            
+            for key, channel in file.channel.items():
+                if key in curr_file.channel:
+                    messagebox.showinfo("Informació", f"El fitxer «{name}» ja té obert el canal «{key}».")
+                else:
+                    tab = create_tab(curr_file.view.selector, key)
+                    curr_file.channel[key] = file.channel[key]
+                    curr_file.view.channel_tabs[key] = tab
+
             return
 
         folder = parent / name

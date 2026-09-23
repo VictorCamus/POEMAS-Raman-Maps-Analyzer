@@ -458,8 +458,7 @@ def load_aist(filename):
 
     return results
 
-def load(file_list, fileclass):
-    file = file_list[0]
+def load(file, fileclass):
     maps = {'Height(Sen)': 'Height', 'Mag': 'Mag', 'Phase': 'Phase', 'CPD[2]': 'CPD'}
     data = load_aist(file)
 

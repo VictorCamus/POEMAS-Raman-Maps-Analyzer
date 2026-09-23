@@ -20,8 +20,7 @@ class ChannelData:  # Crea canals per a cada tipus de mapa dins d'un fitxer.
         if self.color is None: 
             self.color = Colors(self.name) if self.name in cmaps else Colors('jet')
 
-        if self.Z is None and self.spectra.ydata is not None:
-            self.Z = np.nansum(self.spectra.ydata, axis = 2, dtype=float)
+        if self.Z is None and self.spectra is None: self.Z = np.nansum(self.spectra.ydata, axis = 2, dtype=float)
 
         if self.lims is None: self.update_lims()
 

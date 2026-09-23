@@ -31,7 +31,7 @@ class FileView:
         self.selector = Notebook(self.tab)
         self.selector.grid(row=0, column=0, sticky="ew")
 
-        for name, ch in self.controller.channel.items(): ch.tab = create_tab(self.selector, name)
+        self.channel_tabs = {name: create_tab(self.selector, name) for name in self.controller.channel}
 
         self.content = Frame(self.tab)
         self.content.grid(row=1, column=0, sticky="nsew")

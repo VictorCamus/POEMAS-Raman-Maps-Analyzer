@@ -5,7 +5,10 @@ FORMAT_MAP = {
     '.h5': h5,
     '.hdf5': h5,
     '.xyz': xyz,
-    '.wsxm': wsxm,
+    '.top': wsxm,
+    '.Auxfeed': wsxm,
+    '.ch15': wsxm,
+    '.ch16': wsxm,
     '.txt': txtraman
 }
 

@@ -126,7 +126,7 @@ class BaseMapWindow(BaseWindow):
         ch.lims = self.lims
         current_chframe = file.view.selector.select()
 
-        if current_chframe == str(ch.tab):
+        if current_chframe == str(file.view.channel_tabs[ch.name]):
             file.view.map.header.set_channel(ch)
             file.view.map.refresh_map()
 

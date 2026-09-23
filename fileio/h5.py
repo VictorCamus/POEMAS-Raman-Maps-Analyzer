@@ -3,8 +3,7 @@ import numpy as np
 from dataclasses import is_dataclass
 from typing import get_origin, get_args
 
-def load(file_list, fileclass):
-    file = file_list[0]
+def load(file, fileclass):
     with h5py.File(file, "r") as f:
         if file.suffix.lower() == '.hdf5':
             order = list(f.attrs["file_order"])
