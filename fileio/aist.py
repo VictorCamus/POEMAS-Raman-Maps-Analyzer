@@ -1,503 +1,956 @@
-import struct
-import numpy as np
-import matplotlib.pyplot as plt
+"""Lector de fitxers .aist."""
 
-from classes import ChannelData, Geometry, ObjectData, SpecData
-from process.converter import nm_to_raman, nm_to_eV
+import struct
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, TypedDict
+
+import numpy as np
+
+from classes.data import ChannelData, GeometryData, ObjectData, SpecData
+from process.converter import nm_to_energy, nm_to_raman
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from numpy.typing import NDArray
+
+    from classes.protocols import FileDataDict
+
+
+MAP_CHANNELS = {"Height(Sen)": "Height", "Mag": "Mag", "Phase": "Phase", "CPD[2]": "CPD"}
+
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+PNG_IEND = b"IEND"
+
+
+# =========================================================
+# PROTOCOLS
+# =========================================================
+
+
+@dataclass
+class AistState:
+    """Protocol bàsic de les dades obtingudes d'un fitxer AIST."""
+
+    channels: dict[str, ChannelData] = field(default_factory=dict)
+    geometry: GeometryData | None = None
+    objects: ObjectData = field(default_factory=ObjectData)
+    type_name: str | None = None
+    raw_spectra: NDArray[np.float32] | None = None
+
+
+class RasterChannel(TypedDict):
+    """Protocol d'un canal raster."""
+
+    data: NDArray[np.float32]
+    dim: tuple[int, int]
+    size: tuple[float, float]
+    units: AxisUnits
+    mask: NDArray[np.bool_]
+
+
+class CurveChannel(TypedDict):
+    """Protocol d'una corba."""
+
+    x: NDArray[np.float32]
+    y: NDArray[np.float32]
+    units: AxisUnits
+
+
+class SpectroChannel(TypedDict):
+    """Protocol d'un canal espectral."""
+
+    data: NDArray[np.float32]
+    dim: tuple[int, int]
+    size: tuple[float, float]
+    units: AxisUnits
+    mask: NDArray[np.bool_]
+    xdata: NDArray[np.float32]
+    spectra: NDArray[np.uint16 | np.uint32]
+    laser: float
+
+
+class AxisUnits(TypedDict):
+    """Protocol d'unitats."""
+
+    x: str
+    y: str
+    z: str
+
 
 # =========================================================
 # BUFFER READER (equivalent a punters en C)
 # =========================================================
 
-class BufferReader:
-    def __init__(self, data: bytes):
-        self.data = data
-        self.pos = 0
 
-    def remaining(self):
+class BufferReader:
+    """Classe que conté un conjunt de bytes i indica la posició actual de les dades."""
+
+    def __init__(self, data: bytes) -> None:
+        """Guarda les dades i inicia la posició.
+
+        Parameters
+        ----------
+        data: bytes
+            Dades en format bytes.
+
+        """
+        self.data: bytes = data
+        self.pos: int = 0
+
+    def remaining(self) -> int:
+        """Indica quants bytes queden per llegir.
+
+        Returns
+        -------
+        remaining: int
+            Dades restants.
+
+        """
         return len(self.data) - self.pos
 
-# =========================================================
-# LECTORS QT
-# =========================================================
+    def take(self, size: int) -> bytes:
+        """Retorna els següents `size` bytes i avança la posició.
 
-def read_qt_int(r):
-    if r.remaining() < 4:
-        raise ValueError
-    v = struct.unpack(">i", r.data[r.pos:r.pos+4])[0]
-    r.pos += 4
-    return v
+        Parameters
+        ----------
+        size: int
+            Mida de la cadena
 
-def read_qt_int64(r):
-    if r.remaining() < 8:
-        raise ValueError
-    v = struct.unpack(">q", r.data[r.pos:r.pos+8])[0]
-    r.pos += 8
-    return v
+        Returns
+        -------
+        data: bytes
+            Cadena de bytes
 
-def read_qt_double(r):
-    if r.remaining() < 8:
-        raise ValueError
-    v = struct.unpack(">d", r.data[r.pos:r.pos+8])[0]
-    r.pos += 8
-    return v
+        Raises
+        ------
+        ValueError
+            Si la longitud triada és major que les dades restants.
 
-def read_qt_bool(r):
-    if r.remaining() < 1:
-        raise ValueError
-    v = r.data[r.pos] != 0
-    r.pos += 1
-    return v
+        """
+        if size < 0 or self.remaining() < size:
+            msg = "No hi ha prou dades per a llegir."
+            raise ValueError(msg)
 
-def read_qt_byte(r):
-    if r.remaining() < 1:
-        raise ValueError
-    v = r.data[r.pos]
-    r.pos += 1
-    return v
+        start = self.pos
+        self.pos += size
+        return self.data[start:self.pos]
 
-def read_qt_string(r):
-    length = read_qt_int(r)
+    def read_uint8(self) -> int:
+        """Llig un enter de 8 bits.
 
-    if length == 0:
-        return ""
+        Returns
+        -------
+        value: int
 
-    # if r.remaining() < length:
-    #     raise ValueError
+        """
+        return int(struct.unpack(">B", self.take(1))[0])
 
-    raw = r.data[r.pos:r.pos+length]
-    r.pos += length
+    def read_int32(self) -> int:
+        """Llig un enter de 32 bits.
 
-    return raw.decode("utf-16-be")
+        Returns
+        -------
+        value: int
 
-def read_qt_byte_array(r, dtype = "<f8", uncompressed = False):
-    length = read_qt_int(r)
-    if uncompressed: length = read_qt_int(r)
+        """
+        return int(struct.unpack(">i", self.take(4))[0])
 
-    if length == -1:
-        return None
+    def read_int64(self) -> int:
+        """Llig un enter de 64 bits.
 
-    if r.remaining() < length:
-        raise ValueError
+        Returns
+        -------
+        value: int
 
-    value = np.frombuffer(r.data[r.pos:r.pos+length], dtype=dtype)
-    r.pos += length
+        """
+        return int(struct.unpack(">q", self.take(8))[0])
 
-    return value
+    def read_double(self) -> float:
+        """Llig un nombre decimal de 64 bits.
+
+        Returns
+        -------
+        value: float
+
+        """
+        return float(struct.unpack(">d", self.take(8))[0])
+
+    def read_bool(self) -> bool:
+        """Llig un booleà de 8 bits.
+
+        Returns
+        -------
+        value: bool
+
+        """
+        return self.read_uint8() != 0
+
+    def read_string(self) -> str:
+        """Llig un vector de text encapçalat per la mida 'length'.
+
+        Returns
+        -------
+        value: str
+
+        """
+        length = self.read_int32()
+
+        if length == 0:
+            return ""
+
+        return self.take(length).decode("utf-16-be")
+
+    def bool_array(self) -> NDArray[np.bool_]:
+        """Llig una màscara booleana encapçalada per la mida 'length'.
+
+        Returns
+        -------
+        mask: NDArray[np.bool_]
+
+        """
+        length = self.read_int32()
+        return np.frombuffer(self.take(length), dtype=np.bool_)
+
+    def float32_array(self) -> NDArray[np.float32]:
+        """Llig un vector decimal de 32 bits encapçalat per la mida 'length' i el converteix a np.float32.
+
+        Returns
+        -------
+        array: NDArray[np.bool_]
+
+        """
+        length = self.read_int32()
+        return np.frombuffer(self.take(length), dtype=np.float32)
+
+    def float64_array(self) -> NDArray[np.float64]:
+        """Llig un vector decimal de 64 bits encapçalat per la mida 'length' i el converteix a np.float32.
+
+        Returns
+        -------
+        array: NDArray[np.bool_]
+
+        """
+        length = self.read_int32()
+        return np.frombuffer(self.take(length), dtype=np.float64)
+
+    def sub_buffer(self) -> BufferReader | None:
+        """Llig una subsecció encapçalada per la mida 'length'.
+
+        Returns
+        -------
+        sub: BufferReader | None
+            Subobjecte de la classe o None si la longitud és -1 (flag).
+
+        Raises
+        ------
+        ValueError
+            Si la longitud triada és major que les dades restants o menor que zero.
+
+        """
+        length = self.read_int32()
+
+        if length == -1:
+            return None
+
+        if length < 0:
+            msg = f"Longitud invàlida: {length}"
+            raise ValueError(msg)
+
+        if self.remaining() < length:
+            msg = "El bloc supera les dades disponibles."
+            raise ValueError(msg)
+
+        start = self.pos
+        self.pos += length
+
+        return BufferReader(self.data[start:start + length])
+
+    def require_end(self) -> None:
+        """Comprova que no queden dades sense llegir.
+
+        Raises
+        ------
+        ValueError
+            Si encara no s'han llegit totes les dades
+
+        """
+        if self.remaining():
+            msg = f"Queden {self.remaining()} bytes sense llegir."
+            raise ValueError(msg)
+
 
 # =========================================================
 # FUNCIONS AUXILIARS
 # =========================================================
 
-def read_aist_common(r):
-    return {
-        "id": read_qt_int(r),
-        "name": read_qt_string(r),
-        "description": read_qt_string(r),
-        "index": read_qt_int(r),
-    }
 
-def read_aist_common_spectro(r):
-    return {
-        "name": read_qt_string(r),
-        "description": read_qt_string(r),
-        "index": read_qt_int(r),
-    }
+def _extract_units(label: str) -> str:
+    """Extrau les unitats del text AIST.
 
-def extract_units(label):
-    # Versió simplificada (sense Gwyddion)
+    Parameters
+    ----------
+    label: str
+        Vector de text
+
+    Returns
+    -------
+    units: str
+        Unitats corresponents
+
+    """
     if "[" in label and "]" in label:
-        return label.split("[")[1].split("]")[0]
+        return label.split("[")[1].split("]", maxsplit=1)[0]
     return label
 
-# =========================================================
-# RASTER
-# =========================================================
 
-def read_aist_raster(r):
-    common = read_aist_common(r)
+def _read_dim(sub: BufferReader) -> tuple[int, int]:
+    """Extrau les dimensions de la matriu.
 
-    xres = read_qt_int(r)
-    yres = read_qt_int(r)
+    Returns
+    -------
+    xdim:int
+        Dimensió X de la matriu
+    ydim: int
+        Dimensió Y de la matriu
 
-    left = read_qt_double(r)
-    right = read_qt_double(r)
-    bottom = read_qt_double(r)
-    top = read_qt_double(r)
+    """
+    xdim = sub.read_int32()
+    ydim = sub.read_int32()
 
-    xunits = read_qt_string(r)
-    yunits = read_qt_string(r)
-    zunits = read_qt_string(r)
+    return xdim, ydim
 
-    values = read_qt_byte_array(r)
 
-    values = values.reshape((yres, xres))
-    values = np.flipud(values)
+def _read_size(sub: BufferReader) -> tuple[float, float]:
+    """Extrau la mida de cada dimensió.
 
-    result = {
-        "type": "raster",
-        "common": common,
-        "data": values,
-        "xres": xres,
-        "yres": yres,
-        "extent": (left, right, bottom, top),
-        "units": {
-            "x": extract_units(xunits),
-            "y": extract_units(yunits),
-            "z": extract_units(zunits),
-        }
-    }
+    Returns
+    -------
+    width: str
+        Amplària de la imatge
+    height: str
+        Altura de la imatge
 
-    # data = result["data"]
-    # left, right, bottom, top = result["extent"]
+    """
+    left = sub.read_double()
+    right = sub.read_double()
+    bottom = sub.read_double()
+    top = sub.read_double()
 
-    # fig, ax = plt.subplots()
-    #
-    # im = ax.imshow(
-    #     data,
-    #     extent=(left, right, bottom, top),
-    #     origin="lower",
-    #     aspect="auto"
-    # )
-    #
-    # fig.colorbar(im, ax=ax, label=result["units"]["z"])
-    #
-    # ax.set_xlabel(result["units"]["x"])
-    # ax.set_ylabel(result["units"]["y"])
-    #
-    # plt.show()
+    return right - left, top - bottom
 
-    # MASK (opcional)
-    try:
-        mask_data = read_qt_byte_array(r)
-        if mask_data and len(mask_data) == xres * yres:
-            mask = np.frombuffer(mask_data, dtype=np.uint8)
-            mask = mask.reshape((yres, xres))
-            mask = np.flipud(mask)
-            result["mask"] = mask
-    except:
-        pass
 
-    # view data (ignorat)
-    try:
-        read_qt_byte_array(r)
-    except:
-        pass
+def _read_units(sub: BufferReader) -> AxisUnits:
+    """Extrau les unitats de la imatge.
 
-    return result
+    Returns
+    -------
+    units: dict{"x", "y", "z"}
+        Dimensions de les coordenades X, Y i Z.
 
-# =========================================================
-# CURVE
-# =========================================================
+    """
+    xunits = _extract_units(sub.read_string())
+    yunits = _extract_units(sub.read_string())
+    zunits = _extract_units(sub.read_string())
 
-def read_aist_curve(r):
-    common = read_aist_common(r)
+    return {"x": xunits, "y": yunits, "z": zunits}
 
-    res = read_qt_int(r)
 
-    arr = read_qt_byte_array(r)
-    _ = read_qt_byte_array(r)  # view data ignorat
+def _read_xdata(sub: BufferReader) -> tuple[float, NDArray[np.float32], int]:
+    """Llig el vector de valors associat a un espectre.
 
-    xunits = read_qt_string(r)
-    yunits = read_qt_string(r)
+    Parameters
+    ----------
+    sub: BufferReader
+        Subclasse de bytes
 
-    x = arr[:res]
-    y = arr[res:]
+    Returns
+    -------
+    laser: float
+        Longitud d'ona d'il·luminació si escau, si no és 100.0 per predeterminat.
+    xdata: NDArray[np.float32]
+        Vector de dades
+    nchan:
+        Nombre de dades del vector
 
-    return {
-        "type": "curve",
-        "common": common,
-        "x": x,
-        "y": y,
-        "units": {
-            "x": extract_units(xunits),
-            "y": extract_units(yunits),
-        }
-    }
+    """
+    sub.read_int32()
+    laser = sub.read_double()
+
+    _ = sub.read_double()
+    _ = sub.read_double()
+    _ = sub.read_int32()
+    _ = sub.read_int32()
+
+    nchan = sub.read_int32()
+    xdata = sub.float32_array()
+
+    return laser, xdata, nchan
+
 
 # =========================================================
-# CURVE
+# TYPE READERS
 # =========================================================
 
-def read_aist_spectro(r):
-    spectra = read_qt_byte_array(r, dtype="<f4", uncompressed=True)
-    common_spec = read_aist_common_spectro(r)
 
-    _ = read_qt_int(r)
-    _ = read_qt_int(r)
+def read_aist_raster(sub: BufferReader | None) -> tuple[str, RasterChannel]:
+    """Llig un canal amb format raster.
 
-    laser = read_qt_double(r)
-    _ = read_qt_double(r)
-    _ = read_qt_double(r)
-    _ = read_qt_int(r)
-    _ = read_qt_int(r)
+    Parameters
+    ----------
+    sub: BufferReader | None
+        Subconjunt de bytes del lector principal
 
-    nchan = read_qt_int(r)
-    q_vec = read_qt_byte_array(r, dtype="<f4")
+    Returns
+    -------
+    name: str
+        Nom del canal
+    channel: RasterChannel
+        Dades del canal raster.
 
-    common = read_aist_common(r)
+    Raises
+    ------
+    ValueError
+        Si no hi ha cap data al raster.
 
-    xres = read_qt_int(r)
-    yres = read_qt_int(r)
+    """
+    if sub is None:
+        msg = "No hi ha informació al raster."
+        raise ValueError(msg)
 
-    left = read_qt_double(r)
-    right = read_qt_double(r)
+    _flag = sub.read_int32()
+    name = sub.read_string()
+    _desc = sub.read_string()
+    _int = sub.read_int32()
 
-    bottom = read_qt_double(r)
-    top = read_qt_double(r)
+    channel = read_data_raster(sub)
+    sub.require_end()
 
-    xunits = read_qt_string(r)
-    yunits = read_qt_string(r)
-    zunits = read_qt_string(r)
+    return name, channel
 
-    nspec = read_qt_int(r)
 
-    spectra = spectra.reshape(nspec, nchan)
+def read_data_raster(sub: BufferReader) -> RasterChannel:
+    """Llig les dades d'un raster.
 
-    return {
-        "type": "spectro",
-        "common": common_spec,
-        "laser": laser,
-        "spectra": spectra,
-        "xdata": q_vec,
-        "xres": xres,
-        "yres": yres,
-        "extent": (left, right, bottom, top),
-        "units": {
-            "x": extract_units(xunits),
-            "y": extract_units(yunits),
-            "z": "nm",
-        }
-    }
+    Returns
+    -------
+    channel: RasterChannel
+        Dades del canal
 
-def read_property(r):
-    return {'name': read_qt_string(r),
-    'description': read_qt_string(r),
-    'value': read_qt_string(r)}
+    """
+    dim = _read_dim(sub)
+    size = _read_size(sub)
+    units = _read_units(sub)
 
-def read_aist_curvemap(r):
-    spectra = read_qt_byte_array(r, dtype="<f4", uncompressed=False)
-    common_spec = read_aist_common_spectro(r)
+    values = np.array(sub.float64_array(), dtype=np.float32)
+    values = values.reshape((dim[1], dim[0]))
 
-    _ = read_qt_int(r)
-    _ = read_qt_int(r)
+    mask = sub.bool_array()
+    mask = mask.reshape((dim[1], dim[0]))
 
-    laser = read_qt_double(r)
-    _ = read_qt_double(r)
-    _ = read_qt_double(r)
-    _ = read_qt_int(r)
-    _ = read_qt_int(r)
+    _flag = sub.read_int32()  # -1
 
-    nchan = read_qt_int(r)
-    q_vec = read_qt_byte_array(r, dtype="<f4")
+    return {"data": values,
+            "dim": dim,
+            "size": size,
+            "units": units,
+            "mask": mask}
 
-    common = read_aist_common(r)
 
-    xres = read_qt_int(r)
-    yres = read_qt_int(r)
+def read_aist_curve(sub: BufferReader | None) -> CurveChannel:
+    """Llig un corba AIST.
 
-    left = read_qt_double(r)
-    right = read_qt_double(r)
+    Parameters
+    ----------
+    sub: BufferReader | None
+        Subconjunt de bytes del lector principal
 
-    bottom = read_qt_double(r)
-    top = read_qt_double(r)
+    Returns
+    -------
+    channel: RasterChannel
+        Dades del canal raster.
 
-    xunits = read_qt_string(r)
-    yunits = read_qt_string(r)
-    zunits = read_qt_string(r)
+    Raises
+    ------
+    ValueError
+        Si no hi ha cap data a la corba.
 
-    nspec = read_qt_int(r)
+    """
+    if sub is None:
+        msg = "No hi ha informació a la corba."
+        raise ValueError(msg)
 
-    spectra = spectra.reshape(nspec, nchan)
+    _flag = sub.read_int32()
+    _name = sub.read_string()
+    _desc = sub.read_string()
 
-    r.pos += 131072
-    r.pos += 52
-    read_aist_raster(r)
-    r.pos += 12
-    common = read_aist_common_spectro(r)
-    nprop = read_qt_int(r)
+    resolution = sub.read_int32()
 
-    for _ in range(nprop):
-        read_property(r)
-        read_qt_byte(r)
+    values = np.array(sub.float64_array(), np.float32)
+    _view = sub.float64_array()  # view data ignorat
 
-    _ = read_qt_int(r)
-    _ = read_qt_int(r)
-    _ = read_qt_double(r)
-    _ = read_qt_double(r)
-    _ = read_qt_double(r)
-    _ = read_qt_double(r)
+    xunits = sub.read_string()
+    yunits = sub.read_string()
 
-    _ = read_qt_int(r)
-    _ = read_qt_double(r)
-    _ = read_qt_double(r)
-    _ = read_qt_double(r)
-    _ = read_qt_double(r)
-    _ = read_qt_int(r)
+    return {"x": values[:resolution],
+            "y": values[resolution:],
+            "units": {"x": _extract_units(xunits),
+                      "y": _extract_units(yunits),
+                      "z": ""}}
 
-    _ = read_qt_double(r)
-    _ = read_qt_double(r)
-    _ = read_qt_double(r)
-    _ = read_qt_double(r)
-    _ = read_qt_double(r)
-    _ = read_qt_double(r)
-    _ = read_qt_double(r)
-    _ = read_qt_double(r)
-    _ = read_qt_double(r)
-    _ = read_qt_double(r)
-    _ = read_qt_double(r)
-    _ = read_qt_double(r)
 
-    _ = read_qt_int(r)
-    _ = read_qt_int(r)
-    _ = read_qt_int(r)
-    _ = read_qt_int(r)
-    _ = read_qt_int(r)
-    _ = read_qt_int(r)
-    _ = read_qt_int(r)
+def read_data_spectra(sub: BufferReader | None, spec: NDArray[np.float32]) -> SpectroChannel:
+    """Llig les dades relacionades amb un fitxer d'espectres arbitrari.
 
-    _ = read_qt_byte(r)
-    _ = read_qt_double(r)
-    _ = read_qt_double(r)
-    _ = read_qt_double(r)
-    _ = read_qt_double(r)
+    Parameters
+    ----------
+    sub: BufferReader | None
+        Subclasse de bytes
+    spec: NDArray[np.float32]
+        Dades crues de l'espectre
 
-    _ = read_qt_double(r)
-    _ = read_qt_double(r)
-    _ = read_qt_int(r)
-    _ = read_qt_int(r)
-    _ = read_qt_int(r)
+    Returns
+    -------
+    channel: SpectroChannel
+        Dades d'un canal espectral
 
-    for i in range(100):
-        for j in range(100):
-            a = read_qt_int(r)
-            b = read_qt_int(r)
+    Raises
+    ------
+    ValueError
+        Si no hi ha dades a llegir
 
-    return {
-        "type": "spectro",
-        "common": common_spec,
-        "laser": laser,
-        "spectra": spectra,
-        "xdata": q_vec,
-        "xres": 100,
-        "yres": 100,
-        "extent": (left, right, bottom, top),
-        "units": {
-            "x": extract_units(xunits),
-            "y": extract_units(yunits),
-            "z": "nm",
-        }
-    }
+    """
+    if sub is None:
+        msg = "No s'han trobat dades relacionades amb l'espectre"
+        raise ValueError(msg)
+
+    laser, xdata, nchan = _read_xdata(sub)
+
+    _flag = sub.read_int32()  # -1
+    _name = sub.read_string()
+    _desc = sub.read_string()
+    _value = sub.read_int32()
+
+    dim = _read_dim(sub)
+    size = _read_size(sub)
+    units = _read_units(sub)
+
+    mask = sub.bool_array().reshape(dim[1], dim[0])
+
+    spec = spec.reshape(dim[1], dim[0], nchan)
+    spec = np.maximum(spec, 0)
+    spectra = spec.astype(np.uint16) if np.nanmax(spec) <= np.iinfo(np.uint16).max\
+            else spec.astype(np.uint32)
+
+    data = np.nansum(spec, axis=2, dtype=float)
+
+    read_spectro_maps(sub, dim)
+    read_metadata(sub)
+
+    return {"data": data,
+            "dim": dim,
+            "size": size,
+            "units": units,
+            "mask": mask,
+            "xdata": xdata,
+            "spectra": spectra,
+            "laser": laser}
+
 
 # =========================================================
-# DATA NODE
+# TYPE READERS
 # =========================================================
 
-READERS = {
-    "raster": read_aist_raster,
-    "curve": read_aist_curve,
-    "spectro": read_aist_spectro,
-    "curveMap": read_aist_curvemap
-}
 
-def read_aist_data(r):
-    type_ = read_qt_string(r)
-    
-    if type_ == 'spectro': return read_aist_spectro(r), type_
-    if type_ == 'curveMap':
-        results = read_aist_curvemap(r)
-        return results, type_
+def read_scan_properties(sub: BufferReader) -> dict[str, bool | int | float]:
+    """Llig informació relativa a l'operació de l'equip i algorismes aplicats.
 
-    length = read_qt_int(r)
-    if r.remaining() < length:
-        raise ValueError
+    Parameters
+    ----------
+    sub: BufferReader
+        Subclasse de bytes
 
-    sub = BufferReader(r.data[r.pos:r.pos+length])
+    Returns
+    -------
+    info: dict[str, bool | int | float]
+        Diccionari amb la informació llegida
 
-    r.pos += length
-    reader = READERS.get(type_)
+    Raises
+    ------
+    NotImplementedError
+        Si existeix un format desconegut
 
-    if reader is None:
-        return None, type_
+    """
+    info = {}
+    value: bool | int | float
 
-    return reader(sub), type_
+    for _ in range(sub.read_int32()):
+        sub.read_string()
+
+    for _ in range(sub.read_int32()):
+        key = sub.read_string()
+        type_id = sub.read_int32()
+        _ = sub.read_bool()
+        match type_id:
+            case 1:
+                value = sub.read_bool()
+            case 2:
+                value = sub.read_int32()
+            case 6:
+                value = sub.read_double()
+
+            case _:
+                msg = f"Tipus desconegut: {type_id}"
+                raise NotImplementedError(msg)
+
+        info[key] = value
+
+    _flag = sub.read_int32()
+
+    return info
+
+
+def read_metadata(r: BufferReader) -> dict[str, dict[str, str]]:
+    """Llig la metadata d'un bloc.
+
+    Parameters
+    ----------
+    r: BufferReader
+        Bloc de bytes.
+
+    Returns
+    -------
+    metadata: dict[str, dict[str, str]]
+        Dades llegides
+
+    Raises
+    ------
+    ValueError
+        Si l'estructura de les metadades és diferent de l'esperada.
+
+    """
+    metadata = {}
+
+    default1 = r.read_string()
+    metadata[default1] = {"description": r.read_string(),
+                         "value": str(r.read_int32())}
+
+    for _ in range(r.read_int32()):
+        key = r.read_string()
+        metadata[key] = {"description": r.read_string(),
+                         "value": r.read_string()}
+
+        separator = r.read_bool()
+        if separator:
+            msg = "Separador inesperat."
+            raise ValueError(msg)
+
+    _flag = r.read_int32()
+
+    return metadata
+
+
+def read_png(sub: BufferReader | None) -> bytes | None:
+    """Llig una imatge amb format PNG.
+
+    Parameters
+    ----------
+    sub: BufferReader | None
+        Subclasse de bytes
+
+    Returns
+    -------
+    png: bytes | None
+        Retorna el PNG si existeix, si no retorna None
+
+    Raises
+    ------
+    ValueError
+        Si no conté la signatura d'un PNG
+
+    """
+    if sub is None:
+        return None
+
+    start = sub.pos
+    sub.read_int32()
+    if sub.take(8) != PNG_SIGNATURE:
+        msg = "No és un PNG."
+        raise ValueError(msg)
+
+    while True:
+        length = sub.read_int32()
+        chunk_type = sub.take(4)
+
+        _chunk_data = sub.take(length + 4)
+
+        if chunk_type == b"IEND":
+            sub.require_end()
+            return sub.data[start:sub.pos]
+
+
+def read_numbers(sub: BufferReader) -> None:
+    """Llig números. La seua funció encara no està ben determinada.
+
+    Parameters
+    ----------
+    sub: BufferReader
+        Subclasse de bytes
+
+    """
+    for _ in range(4):
+        sub.read_double()
+
+    for _ in range(sub.read_int32()):
+        sub.read_double()
+
+    for _ in range(sub.read_int32()):
+        sub.read_double()
+
+    for _ in range(5):
+        sub.read_int32()
+
+    sub.read_bool()  # False
+
+    sub.require_end()
+
+
+def read_spectro_maps(sub: BufferReader, dim: tuple[int, int]) -> None:
+    """Lector de mapes espectrals. La seua funció encara no hi està ben determinada.
+
+    Parameters
+    ----------
+    sub: BufferReader
+        Subclasse de bytes
+    dim: tuple[int, int]
+        Dimensions X i Y de les màscares
+
+    """
+    for _ in range(3):
+        _ = sub.float32_array().reshape(dim[1], dim[0])
+
+    _dim = _read_dim(sub)
+    _size = _read_size(sub)
+
+    sub.read_int32()
+    sub.read_int32()
+    _dim2 = _read_dim(sub)
+
+    sub.read_int32()
+    sub.read_int32()
+    _dim3 = _read_dim(sub)
+
+    _flag = sub.read_int32()
+
 
 # =========================================================
-# TREE RECURSIU
+# INFO READER
 # =========================================================
 
-def read_aist_tree(r, results):
-    is_data = read_qt_bool(r)
-    type_ = None
+
+def read_info_raster(sub: BufferReader | None) -> None:
+    """Llig la informació completa relativa a un raster.
+
+    Parameters
+    ----------
+    sub: BufferReader | None
+        Subclasse de bytes. En cas de no haver-hi dades, retorna sense fer-hi res
+
+    """
+    if sub is None:
+        return
+
+    while sub.remaining() != 0:
+        read_info_parameters(sub.sub_buffer())
+        read_png(sub.sub_buffer())
+
+
+def read_info_parameters(sub: BufferReader | None) -> None:
+    """Llig tota la informació relativa a les dades d'un raster.
+
+    Parameters
+    ----------
+    sub: BufferReader | None
+        Subclasse de bytes. En cas de no haver-hi dades, retorna sense fer-hi res
+
+    """
+    if sub is None:
+        return
+
+    read_scan_properties(sub)
+    read_metadata(sub)
+
+    sub2 = sub.sub_buffer()
+    if sub2 is not None:
+        read_numbers(sub2)
+
+    _dim = _read_dim(sub)
+    _size = _read_size(sub)
+    _flag = sub.read_int64()  # -1
+    _end = sub.read_int64()  # 0
+
+    sub.require_end()
+
+
+def read_info_spectra(sub: BufferReader | None, spectra: NDArray[np.float32]) -> SpectroChannel:
+    """Llig la informació completa relativa a un raster.
+
+    Parameters
+    ----------
+    sub: BufferReader | None
+        Subclasse de bytes. En cas de no haver-hi dades, retorna sense fer-hi res
+    spectra: NDArray[np.float32]
+        Dades creus de l'espectre
+
+    Returns
+    -------
+    channel: SpectroChannel
+        Dades d'un canal espectral
+
+    Raises
+    ------
+    ValueError
+        Si no hi ha dades a llegir
+
+    """
+    if sub is None:
+        msg = "No s'ha pogut llegir les dades de l'espectre"
+        raise ValueError(msg)
+
+    channel = read_data_spectra(sub.sub_buffer(), spectra)
+    read_png(sub.sub_buffer())
+
+    return channel
+
+
+# =========================================================
+# FUNCIONS PRINCIPALS
+# =========================================================
+
+
+def read_aist_tree(r: BufferReader, state: AistState) -> None:
+    """Llig els arbres de dades del lector principal.
+
+    Parameters
+    ----------
+    r: BufferReader
+        Subclasse de bytes
+    state: AistState
+        Dades principals del fitxer AIST
+
+    Raises
+    ------
+    NotImplementedError
+        Si cap lector de dades no pot ser identificat
+
+    """
+    is_data = r.read_bool()
+
     if is_data:
-        data, type_ = read_aist_data(r)
-        if data: results.append(data)
+        type_name = r.read_string()
 
-    if type_ == 'spectro' or type_ == 'curveMap': return results
+        if state.type_name is None:
+            state.type_name = type_name
 
-    name = read_qt_string(r)
-    nchildren = read_qt_int(r)
-    for _ in range(nchildren):
-        read_aist_tree(r, results)
-
-# =========================================================
-# FUNCIÓ PRINCIPAL
-# =========================================================
-
-def load_aist(filename):
-    with open(filename, "rb") as f:
-        data = f.read()
-
-    reader = BufferReader(data)
-    results = []
-
-    read_aist_tree(reader, results)
-
-    if not results:
-        raise ValueError("No data found")
-
-    return results
-
-def load(file, fileclass):
-    maps = {'Height(Sen)': 'Height', 'Mag': 'Mag', 'Phase': 'Phase', 'CPD[2]': 'CPD'}
-    data = load_aist(file)
-
-    channels = {}
-    N = None
-    mida = None
-    laser = None
-
-    for d in data:
-        if N is None:
-            N = (d['xres'], d['yres'])
-            extent = d['extent']
-            mida = (extent[1]-extent[0], extent[3]-extent[2])
-
-        match d["type"]:
+        match type_name:
             case "raster":
-                name = d['common']['name']
-                if name == 'CPD': continue
-                if name.endswith('[2]') and name != 'CPD[2]': continue
+                name, channel = read_aist_raster(r.sub_buffer())
+                if name != "CPD" and (name == "CPD[2]" or not name.endswith("[2]")):
 
-                tipus = maps[name]
-                channels[tipus] = ChannelData(name = tipus, Z = np.array(d['data'][::-1]), units = d['units']['z'], lims = None)
+                    tipus = MAP_CHANNELS.get(name, name)
 
+                    state.channels[tipus] = ChannelData(name=tipus, data=channel["data"],
+                                                    units=channel["units"]["z"])
+
+                    if state.geometry is None:
+                        state.geometry = GeometryData(channel["dim"], channel["size"])
+
+            case "curve":
+                _curve = read_aist_curve(r.sub_buffer())
+                msg = "El programa no està dissenyat per a llegir corbes encara."
+                raise NotImplementedError(msg)
             case "spectro":
-                xdata_nm = d['xdata']
-                xdata = {'nm': xdata_nm,
-                         'eV': nm_to_eV(xdata_nm),
-                         '1/cm': nm_to_raman(xdata_nm, d['laser'])}
+                r.pos += 4  # Correcció per un error de format
+                state.raw_spectra = r.float32_array()
 
-                spectra = d['spectra'].reshape(N[1], N[0], d['spectra'].shape[1]).copy()
-                spectra[spectra < 0] = 0
+            case "curveMap":
+                state.raw_spectra = r.float32_array()
 
-                if np.nanmax(spectra) <= np.iinfo(np.uint16).max: spectra = spectra.astype(np.uint16)
-                else: spectra = spectra.astype(np.uint32)
+            case _:
+                msg = f"Classe d'arxiu desconeguda: {type_name}"
+                raise NotImplementedError(msg)
 
-                laser = d['laser']
-                spectra = SpecData(xdata = xdata, raw_ydata = spectra, units = d['units']['z'])
-                channels['Spectra'] = ChannelData(name = 'Spectra', units = 'cts', lims = None, spectra = spectra)
+    _name = r.read_string()
+    nchildren = r.read_int32()
 
-    data = {'channel': channels, 'geometry': Geometry(N, mida), 'objects': ObjectData(laser = laser)}
+    for _ in range(nchildren):
+        read_aist_tree(r, state)
 
-    return fileclass(**data)
+
+def load(filepath: Path) -> FileDataDict:
+    """Carrega el fitxer AIST i el converteix a FileDataDict.
+
+    Parameters
+    ----------
+    filepath: Path
+        Camí del fitxer
+
+    Returns
+    -------
+    dict: FileDataDict
+        Dades preparades per a ser treballades pel programa.
+
+    Raises
+    ------
+    ValueError
+        Si hi ha cap error de lectura o falten dades
+
+    """
+    reader = BufferReader(filepath.read_bytes())
+    state = AistState()
+
+    read_aist_tree(reader, state)
+
+    if not state.channels and state.raw_spectra is None:
+        msg = "Error en obrir el fitxer: No s'han trobat dades."
+        raise ValueError(msg)
+
+    if state.type_name not in {"spectro", "curveMap"}:
+        read_info_raster(reader.sub_buffer())
+
+    else:
+        if state.raw_spectra is None:
+            msg = "Falten les dades espectrals."
+            raise ValueError(msg)
+
+        channel = read_info_spectra(reader.sub_buffer(), state.raw_spectra)
+        if state.type_name == "spectro":
+            xdata: dict[str, NDArray[np.float32]] = {
+                "nm": channel["xdata"],
+                "eV": nm_to_energy(channel["xdata"]),
+                "1/cm": nm_to_raman(channel["xdata"], channel["laser"])}
+            state.channels["SpecData"] = ChannelData(name="SpecData", data=channel["data"], units="cts",
+                                    spectra=SpecData(xdata=xdata, raw_ydata=channel["spectra"],
+                                                     units="nm", laser=channel["laser"]))
+
+        state.geometry = GeometryData(dim=channel["dim"], base_size=channel["size"])
+        state.objects = ObjectData()
+
+    sub = reader.sub_buffer()
+    if sub is not None:
+        while sub.remaining() != 0:
+            read_png(sub.sub_buffer())
+
+        sub.require_end()
+
+    reader.require_end()
+
+    if state.geometry is None:
+        msg = "No s'ha pogut llegir la geometria del fitxer"
+        raise ValueError(msg)
+
+    return {
+        "channel": state.channels,
+        "geometry": state.geometry,
+        "objects": state.objects,
+    }

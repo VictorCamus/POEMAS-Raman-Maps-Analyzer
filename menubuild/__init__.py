@@ -1,3 +1,1 @@
-from .register import BuildMenu
-
-__all__ = ["BuildMenu"]
+"""Mòduls per a la gestió dels menús de l'aplicació."""

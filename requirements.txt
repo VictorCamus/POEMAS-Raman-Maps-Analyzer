@@ -1,8 +1,0 @@
-# Paquets inicials
-numpy>=2.3,<3.0
-matplotlib>=3.10,<4.0
-scipy>=1.16
-lmfit>=1.3.4
-h5py>=3.14
-pybaselines>=1.2
-pywin32>=312; sys_platform == "win32"

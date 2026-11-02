@@ -1,634 +1,918 @@
-from dataclasses import dataclass, field
-from operator import xor
-from tkinter.ttk import LabelFrame, Label
-from tkinter import messagebox
-from matplotlib.colors import TABLEAU_COLORS
-from lmfit import Parameters, minimize
-import numpy as np
+"""Finestra que controla l'ajust d'espectres."""
+
 import threading
 from copy import deepcopy
+from dataclasses import replace
+from functools import partial
+from tkinter import messagebox
+from tkinter.ttk import Frame, Label
+from typing import TYPE_CHECKING, Literal, TypedDict, cast
 
-from window.widgets import Widget, Progress
-from window.builder import BaseWindow
-from process.mathfuncs import Functions, FuncParams, linear_combination, INIT_PARAMS, DEFAULT_PARAMS,  DerivedParams
+import numpy as np
+from lmfit import Parameters, minimize
+from matplotlib.colors import TABLEAU_COLORS
+
+from classes.data import FitData, PeakData, PeakDataConfig
+from classes.views import PeakView
+from drawing.plots import get_verts
 from process.basics import find_nearest
+from process.mathfuncs import DEFAULT_FUNCS, linear_combination
+from process.statistics import get_r2
+from window.builder import BaseWindow
+from window.widgets import Progress, Widget
 
-@dataclass
-class FitConfig:
-    name: str = 'Fit1'
-    peaks: dict[str, Peak] = field(default_factory=dict)
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
-@dataclass
-class Peak:
-    ref: str = ''
-    name: str = ''
-    function: str = 'Gaussiana'
-    params: dict[str, dict] = field(default_factory=dict)
-    bkg: bool = False
-    unique: bool = False
+    from numpy.typing import NDArray
 
-    def ydata(self, xdata):
-        param_values = {name: par['value'] for name, par in self.params.items()}
-        if self.function in INIT_PARAMS: param_values = INIT_PARAMS[self.function](**param_values)
+    from classes.protocols import GestorProtocol, MinimizerProtocol, ParametersProtocol
+    from process.mathfuncs import DefaultParameter
 
-        return Functions[self.function](xdata, **param_values)
 
-@dataclass
-class PeakResult:
-    ref: str
-    name: str
-    params: dict[str, np.ndarray] = field(default_factory=dict)
-    function: str = 'Gaussiana'
-    bkg: bool = False
+COLORS = cast("list[str]", list(TABLEAU_COLORS.values()))
 
-    def ydata(self, xdata, coords):
-        param_values = {name: par[coords] for name, par in self.params.items()}
 
-        if self.function in INIT_PARAMS:
-            param_values = INIT_PARAMS[self.function](**param_values)
+type FitSpecKey = Literal["name", "add", "fit", "r2", "remove", "fit_map"]
 
-        return Functions[self.function](xdata, **param_values)
 
-    @property
-    def parameter_names(self):
-        names = list(self.params)
+class FitSpecWidgets(TypedDict):
+    """Ginys de la finestra d'ajust."""
 
-        derived = DerivedParams.get(self.function, {})
-        names.extend(derived)
+    name: Widget[str]
+    add: Widget[str]
+    fit: Widget[str]
+    r2: Widget[float]
+    remove: Widget[str]
+    fit_map: Widget[str]
 
-        return names
 
-    def get_parameter(self, name):
-        if name in self.params:
-            return self.params[name]
+class PeakSpecWidgets(TypedDict):
+    """Ginys de la classe PeakSpec."""
 
-        derived = DerivedParams.get(self.function, {})
+    name: Widget[str]
+    function: Widget[str]
+    unique: Widget[bool]
 
-        if name in derived:
-            params = self.params
-            return derived[name](params)
 
-        raise KeyError(f"Parameter {name!r} is not available for function {self.function!r}")
+class ParSpecWidgets(TypedDict):
+    """Ginys dels paràmetres."""
 
-@dataclass
-class FitResult:
-    name: str
-    units: str
-    xrange: slice = field(default_factory=slice)
-    bkgdata: np.ndarray = None
-    config: FitConfig = None
-    peaks: dict[str, PeakResult] = field(default_factory=dict)
-    r2: np.ndarray = None
+    value: Widget[float]
+    min: Widget[float]
+    max: Widget[float]
+    vary: Widget[bool]
 
-    def bkg(self, coords, nzeros):
-        if self.bkgdata is None: return np.zeros(nzeros)
 
-        return self.bkgdata[*coords].astype(np.float32)
+class PeakSpec(PeakDataConfig):
+    """Controla la creació dels requadres destinats a l'operació amb pics de l'ajust."""
+
+    widgets: PeakSpecWidgets
+
+    def __init__(self, config: PeakDataConfig, frame: Frame,
+                update_label: Callable[[str, str, float], None],
+                update_func_plot: Callable[[str, bool, bool], None],
+                refresh_plot: Callable[[], None]) -> None:
+        """Crea un nou requadre per a un pic o fons de la funció.
+
+        config: PeakDataConfig:
+            Configuració del pic
+        frame: Frame
+            Nou requadre dins de la finestra principal
+        update_label: Callable[[str, str, float], None]
+            Funció que s'activa quan es canvia el nom del pic
+        update_func_plot: Callable[[str, bool, bool], None]
+            Funció que s'activa quan es canvia la funció del pic
+        refresh_plot: Callable[[], None]
+            Actualització genèrica de la gràfica
+
+        """
+        super().__init__(**vars(config))
+
+        self.frame = frame
+        self.update_label = update_label
+        self.update_func_plot = update_func_plot
+        self.refresh_plot = refresh_plot
+
+        self.par_widgets: dict[str, ParSpecWidgets] = {}
+
+        self._create_widgets()
+        self._create_parameters()
+
+    def _create_widgets(self) -> None:
+        self.widgets: PeakSpecWidgets = {
+            "name": Widget(
+                key="name",
+                var_type=str,
+                init=self.name,
+                widget="entry",
+                widget_kwargs={"width": 8},
+                setter=self,
+                mode="attr",
+            ),
+            "function": Widget(
+                key="function",
+                var_type=str,
+                init=self.function,
+                widget="cb",
+                widget_kwargs={"options": DEFAULT_FUNCS.keys(), "width": 10},
+                setter=self.update_func,
+            ),
+            "unique": Widget(
+                key="unique",
+                var_type=bool,
+                init=self.unique,
+                text="Resoluble:",
+                widget="checkbutton",
+                setter=self,
+                mode="attr",
+            ),
+        }
+
+        self.widgets["name"].add(self.frame, row=0, col=0)
+        self.widgets["function"].add(self.frame, row=0, col=1)
+        self.widgets["unique"].add(self.frame, row=0, col=2, columnspan=2)
+
+        if self.func.is_bkg:
+            self.widgets["unique"].config(state="disabled")
+
+        # Capçalera dels paràmetres
+        Label(self.frame, text="Value").grid(row=1, column=1)
+        Label(self.frame, text="Min").grid(row=1, column=2)
+        Label(self.frame, text="Max").grid(row=1, column=3)
+        Label(self.frame, text="Vary").grid(row=1, column=4)
+
+    def add_parameter(self, parameter: DefaultParameter, name: str, row: int) -> None:
+        """Afig un paràmetre al requadre.
+
+        Parameters
+        ----------
+        parameter: DefaultParameter
+            Valors inicials del paràmetre
+        name: str
+            Nom del paràmetre
+        row: int
+            Fila que ocupa en el requadre
+
+        """
+        self.par_widgets[name] = {
+            "value": Widget(
+                key="value",
+                var_type=float,
+                init=parameter.value,
+                text=f"{name}:",
+                widget="entry",
+                widget_kwargs={"width": 10},
+                setter=partial(self.update_value, par=self.params[name]),
+                ),
+            "min": Widget(
+                key="min",
+                var_type=float,
+                init=parameter.min,
+                widget="entry",
+                widget_kwargs={"width": 8},
+                setter=parameter,
+                mode="attr",
+            ),
+            "max": Widget(
+                key="max",
+                var_type=float,
+                init=parameter.max,
+                widget="entry",
+                widget_kwargs={"width": 8},
+                setter=parameter,
+                mode="attr",
+            ),
+            "vary": Widget(
+                key="vary",
+                var_type=bool,
+                init=parameter.vary,
+                widget="checkbutton",
+                setter=parameter,
+                mode="attr")}
+
+        par = self.par_widgets[name]
+        par["value"].add(self.frame, row=row, col=0)
+        par["min"].add(self.frame, row=row, col=2)
+        par["max"].add(self.frame, row=row, col=3)
+        par["vary"].add(self.frame, row=row, col=4)
+
+    def _create_parameters(self) -> None:
+        """Crea els ginys dels paràmetres de la funció triada."""
+        for row, name in enumerate(self.func.params, start=2):
+            self.add_parameter(self.params[name], name, row)
+
+    def _clear_parameters(self) -> None:
+        """Destrueix els ginys dels paràmetres actuals.
+
+        Raises
+        ------
+        TypeError
+            Si cap giny triat no és del tipus Widget.
+
+        """
+        for widgets in self.par_widgets.values():
+            for widget in widgets.values():
+                if not isinstance(widget, Widget):
+                    msg = "El giny triat no és un objecte Widget."
+                    raise TypeError(msg)
+
+                if widget.label is not None:
+                    widget.label.destroy()
+
+                widget.widget.destroy()
+
+        self.par_widgets.clear()
+
+    def _rebuild_parameters(self) -> None:
+        """Reconstrueix els paràmetres de la nova funció seleccionada."""
+        self._clear_parameters()
+
+        if self.func.is_bkg:
+            self.unique = False
+            self.widgets["unique"].set(False)
+            self.widgets["unique"].config(state="disabled")
+        else:
+            self.widgets["unique"].config(state="normal")
+
+        self._create_parameters()
+
+    def update_name(self, name: str) -> None:
+        """Actualitza el nom del pic i l'etiqueta sobre el gràfic, si no és fons.
+
+        Parameters
+        ----------
+        name: str
+            Nom del pic
+
+        """
+        self.name = name
+        if not self.func.is_bkg:
+            self.update_label(self.ref, name, self.params["x0"].value)
+
+    def update_func(self, func: str) -> None:
+        """Actualitza la funció i conserva els paràmetres que siguen compatibles.
+
+        Parameters
+        ----------
+        func: str
+            Funció triada
+
+        """
+        old_bkg = self.func.is_bkg
+        self.update_function(func)
+
+        self._rebuild_parameters()
+        self.update_func_plot(self.ref, old_bkg, self.func.is_bkg)
+
+    def update_value(self, value: float, par: DefaultParameter) -> None:
+        """Actualitza el valor del paràmetre i la gràfica.
+
+        Parameters
+        ----------
+        value: float
+            Nou valor del paràmetre
+        par: DefaultParameter
+            Classe del paràmetre
+
+        """
+        par.value = value
+        self.refresh_plot()
+
 
 class FitSpec(BaseWindow):
-    def __init__(self, gestor):
+    """Finestra que permet ajustar els espectres a una funció formada per pics i fons."""
+
+    widgets: FitSpecWidgets
+
+    def __init__(self, gestor: GestorProtocol) -> None:
+        """Crea la finestra de treball amb l'ajust actual, si existeix.
+
+        Parameters
+        ----------
+        gestor: GestorProtocol
+            Protocol que conté les variables necessàries per a connectar-se amb l'aplicació principal
+
+        """
+        self.spectra = gestor.current_file.current_channel.spec
+        self.specview = gestor.current_file.specview
+        self.dim = gestor.current_file.geometry.dim
+        self.mask = gestor.current_file.objects.mask
+
         super().__init__(gestor, "Ajust espectral")
 
         self.window.protocol("WM_DELETE_WINDOW", self.close_window)
-        self.main_frame.pack_configure(fill=None, expand=False)
-        self.control_frame.pack_configure(side = 'top', anchor='w')
-        self.peaks = {}
-        self.peaks_frame = {}; self.peaks_widgets = {}
-        self.spec = self.file.view.spectrum
+        self.main_frame.pack_configure(fill="none", expand=False)
+        self.control_frame.pack_configure(side="top", anchor="w")
+        self.peaks: dict[str, PeakSpec] = {}
 
-        if not 'All' in self.spec.fitline: self.spec.fitline['All'], = self.spec.axis.plot(self.xdata, np.full_like(self.xdata, 0), color = 'k')
-        self.fit_frame = LabelFrame(self.main_frame)
-        self.fit_frame.pack(side = 'bottom', fill='both', expand=True, pady = 2)
+        self.specview.fit_line.set_data(self.xdata, np.full_like(self.xdata, 0))
 
-        if self.spec.header.view.fit_key != 'rawdata':
-            config = deepcopy(self.channel.spectra.fits[self.spec.header.view.fit_key].config)
-            self.widgets['name'].set(config.name)
+        self.fit_frame = Frame(self.main_frame)
+        self.fit_frame.pack(side="bottom", fill="both", expand=True, pady=2)
 
-            for peak in config.peaks.values():
-                self._add_peak(peak = peak)
+        if self.specview.header.fit_key != "rawdata":
+            self.widgets["name"].set(self.specview.header.fit_key)
 
-        layout = [(0, 1, 'name'), (0, 3, 'add'),    (0, 4, 'fit'),
-                  (1, 1, 'r2'),   (1, 3, 'remove'), (1, 4, 'fitmap')]
+            for config in deepcopy(self.specview.header.fit.config).values():
+                self.add_peak(config=config, new=False)
 
-        for row, col, key in layout: self.widgets[key].widget.grid_configure(row = row, column = col)
+        layout: list[tuple[int, int, FitSpecKey]] = [
+            (0, 1, "name"),
+            (0, 3, "add"),
+            (0, 4, "fit"),
+            (1, 1, "r2"),
+            (1, 3, "remove"),
+            (1, 4, "fit_map"),
+        ]
+
+        for row, col, key in layout:
+            widget = self.widgets[key]
+            widget.widget.grid_configure(row=row, column=col)
+
+            if widget.label is not None:
+                widget.label.grid_configure(row=row, column=col - 1)
 
     @property
-    def xdata(self):
-        return self.channel.spectra.x[self.xrange]
+    def xdata(self) -> NDArray[np.float32]:
+        """Retorna les dades de l'eix X dins del rang triat."""
+        return self.spectra.x[self.xrange]
 
     @property
-    def bkg(self):
-        spec = self.channel.spectra
-        bkg = np.zeros_like(spec.y[self.xrange])
+    def ydata(self) -> NDArray[np.float32]:
+        """Retorna les dades de l'eix Y dins del rang triat."""
+        return self.spectra.y[self.xrange]
 
-        if self.spec.header.view.widgets['bkg'].get():
-            fit = self.spec.header.view.fit_key
-            if fit == 'rawdata':
-                bkg = spec.bkg[self.xrange].copy()
+    @property
+    def bkg(self) -> NDArray[np.float32]:
+        """Retorna les dades del fons si està actiu. Si no, retorna un vector nul."""
+        bkg = np.zeros_like(self.ydata, dtype=np.float32)
 
-            else:
-                bkg = spec.fits[fit].bkg(self.channel.spectra.coords, len(spec.y))[self.xrange].copy()
+        if self.spectra.bkg_active:
+            bkg = self.spectra.bkg[self.xrange].copy()\
+                if self.specview.header.fit_key == "rawdata"\
+                else self.specview.header.fit.bkg(self.spectra.coords, len(self.spectra.y))[self.xrange].copy()
 
             for peak in self.peaks.values():
-                if peak.bkg:
+                if peak.func.is_bkg:
                     bkg += peak.ydata(self.xdata)
 
         return bkg
 
     @property
-    def xrange(self):
-        return self.channel.spectra.xrange
+    def xrange(self) -> slice[int, int, int]:
+        """Retorna el rang de dades triat."""
+        return self.spectra.xrange
 
-    def close_window(self):
-        spec = self.file.view.spectrum
+    def _create_widgets(self) -> None:
+        name = f"Fit{len(self.spectra.fits) + 1}"
 
-        for fitplot in spec.fitline.values(): fitplot.remove()
-        spec.fitline = dict()
-        for etiquette in spec.etiquette.values(): etiquette.remove()
-        spec.etiquette = dict()
+        self.widgets = {
+            "name": Widget(
+                key="name",
+                var_type=str,
+                init=name,
+                text="Nom:",
+                widget="entry",
+                widget_kwargs={"width": 10},
+            ),
+            "add": Widget(
+                key="add",
+                init="Afegir pic",
+                widget="button",
+                widget_kwargs={"width": 12},
+                setter=self.add_peak,
+            ),
+            "fit": Widget(
+                key="fit",
+                init="Ajustar pic",
+                widget="button",
+                widget_kwargs={"width": 12},
+                setter=self.fit_data,
+            ),
+            "r2": Widget(
+                key="r2",
+                var_type=float,
+                text="R²",
+                widget="entry",
+                widget_kwargs={"state": "readonly", "width": 10},
+            ),
+            "remove": Widget(
+                key="remove",
+                init="Eliminar pic",
+                widget="button",
+                widget_kwargs={"width": 12},
+                setter=self.remove_peak,
+            ),
+            "fit_map": Widget(
+                key="fit_map",
+                init="Ajustar mapa complet",
+                widget="button",
+                widget_kwargs={"width": 12},
+                setter=self.fit_map,
+            ),
+        }
 
-        spec.canvas.draw_idle()
+    def close_window(self) -> None:
+        """Elimina els objectes relacionats amb l'ajust del gràfic d'espectres."""
+        for peak_plot in self.specview.fit_peaks.values():
+            peak_plot.remove()
+
+        self.specview.fit_line.set_data([], [])
+
+        self.specview.canvas.draw_idle()
         self.window.destroy()
 
-    def _add_peak(self, value = None, peak = None, new = False):
-        colors = list(TABLEAU_COLORS.values())
+    def add_peak(self, config: PeakDataConfig | None = None, *, new: bool = True) -> None:
+        """Afig un nou requadre que conté les dades del pic donat. Si no, crea un nou pic.
 
+        Parameters
+        ----------
+        config: PeakDataConfig | None = None
+            Dades de la configuració de l'ajust actual, si existeix.
+        new: bool = True
+            True: Nou pic. False: Pic ja existent a l'ajust.
+
+        """
         i = len(self.peaks)
 
-        if peak is None:
-            peak = Peak(ref = f'P{i + 1}', name=f'P{i + 1}')
-            peak.params = {name: DEFAULT_PARAMS[name].copy() for name in FuncParams[peak.function]}
+        if config is None:
+            config = PeakDataConfig(ref=f"P{i + 1}", name=f"P{i + 1}")
 
         row = i % 3
         col = i // 3
 
-        frame = LabelFrame(self.fit_frame)
-        frame.grid(row=row, column=col, padx=5, pady=5, sticky='nw')
+        frame = Frame(self.fit_frame)
+        frame.grid(row=row, column=col, padx=5, pady=5, sticky="nw")
 
-        widgets = {
-            'name': Widget(key='name', var_type = str, init=peak.name,
-                    widget='entry', widget_kwargs={'width': 8},
-                    setter = peak, mode = 'attr'),
-
-            'function': Widget(key='function', var_type = str, init = peak.function,
-                        widget='cb', widget_kwargs={'options': Functions.keys(), 'width': 10},
-                        setter = self.update_func, setter_kwargs = {'peak': peak}),
-
-            'unique': Widget(key = 'unique', var_type = bool, init = peak.unique,
-                      text = 'Resoluble:', widget = 'checkbutton',
-                      setter = peak, mode = 'attr')}
-
-        self.peaks_frame[peak.ref] = frame
-
-        # Afegim nom i funció
-        widgets['name'].add(frame, row=0, col=0)
-        widgets['function'].add(frame, row=0, col=1)
-        widgets['unique'].add(frame, row=0, col=2, columnspan = 2)
-
-        if peak.bkg: widgets['unique'].config(state = 'disabled')
-
-        self.peaks_widgets[peak.ref] = widgets
-
-        # Capçalera dels paràmetres
-        Label(frame, text='Value').grid(row=1, column=1)
-        Label(frame, text='Min').grid(row=1, column=2)
-        Label(frame, text='Max').grid(row=1, column=3)
-        Label(frame, text='Vary').grid(row=1, column=4)
-
-        for row, name in enumerate(FuncParams[peak.function], start=2):
-            parameter = peak.params[name]
-            self._add_parameter_widgets(peak, parameter, name, row)
+        peak = PeakSpec(
+            config=config,
+            frame=frame,
+            update_label=self.update_label,
+            update_func_plot=lambda ref, old_bkg, new_bkg: self.update_func_plot(ref, old_bkg=old_bkg, new_bkg=new_bkg),
+            refresh_plot=self.refresh_plot)
+        self.peaks[config.ref] = peak
 
         if new:
-            self.spec.fitline[peak.ref] = self.spec.axis.fill_between(self.xdata, peak.ydata(self.xdata), self.bkg, color=colors[len(self.spec.fitline)], alpha=0.6)
+            self.specview.fit_peaks[config.ref] = PeakView(self.specview.axis, color=COLORS[i])
+            self.set_peak_plot(peak)
+            self.update_fit()
 
-            if 'x0' in peak.params:
-                x0 = peak.params['x0']['value']
-                idx = find_nearest(self.xdata, x0)
-                ycoord = peak.params['A']['value'] + self.bkg[idx]
+    def remove_peak(self) -> None:
+        """Elimina el pic triat i els objectes associats."""
+        if not self.peaks:
+            return
 
-                self.spec.etiquette[peak.ref] = self.spec.axis.annotate(f'{peak.name}\n{x0:.2f}',
-                                                          xy=(x0, ycoord),
-                                                          xytext=(0, 10), textcoords='offset points', ha='center',
-                                                          color='k',
-                                                          fontweight='bold', family='Consolas', fontsize=14)
+        _, peak = self.peaks.popitem()
+        peak.frame.destroy()
 
-        self.peaks[peak.ref] = peak
-
-    def _add_parameter_widgets(self, peak, parameter, name, row):
-        frame = self.peaks_frame[peak.ref]
-        widgets = self.peaks_widgets[peak.ref]
-        widgets[f'{name}_value'] = Widget(key=f'value', var_type=float, init=parameter['value'],
-                                   text=f'{name}:', widget='entry', widget_kwargs={'width': 10},
-                                   setter = self.update_value, setter_kwargs = {'peak': peak, 'par': name})
-
-        widgets[f'{name}_min'] = Widget(key=f'min', var_type=float, init=parameter['min'],
-                                 widget='entry', widget_kwargs={'width': 8},
-                                 setter = parameter, mode = 'dict')
-
-        widgets[f'{name}_max'] = Widget(key=f'max', var_type=float, init=parameter['max'],
-                                 widget='entry', widget_kwargs={'width': 8},
-                                 setter = parameter, mode = 'dict')
-
-        widgets[f'{name}_vary'] = Widget(key=f'vary', var_type=bool, init=parameter['vary'],
-                                 widget='checkbutton',
-                                 setter = parameter, mode = 'dict')
-
-        widgets[f'{name}_value'].add(frame, row=row, col=0)
-        widgets[f'{name}_min'].add(frame, row=row, col=2)
-        widgets[f'{name}_max'].add(frame, row=row, col=3)
-        widgets[f'{name}_vary'].add(frame, row=row, col=4)
-
-    def update_func(self, func, peak):
-        old_params = peak.params
-        peak.function = func
-        peak.params = {}
-
-        for name in FuncParams[func]:
-            if name in old_params: peak.params[name] = old_params[name]
-            else: peak.params[name] = DEFAULT_PARAMS[name].copy()
-
-        if 'x0' in FuncParams[func]: bkg_value = False
-        else: bkg_value = True
-
-        if xor(bkg_value, peak.bkg):
-            colors = list(TABLEAU_COLORS.values())
-
-            if bkg_value:
-                self.spec.fitline[peak.ref].remove()
-                self.spec.fitline.pop(peak.ref)
-                self.spec.etiquette[peak.ref].remove()
-                self.spec.etiquette.pop(peak.ref)
-            else:
-                self.spec.fitline[peak.ref] = self.spec.axis.fill_between(self.xdata, peak.ydata(self.xdata), 0,
-                                              color=colors[len(self.spec.fitline)], alpha=0.6)
-                x0 = peak.params['x0']['value']
-                idx = find_nearest(self.xdata, x0)
-                ycoord = peak.params['A']['value'] + self.bkg[idx]
-
-                self.spec.etiquette[peak.ref] = self.spec.axis.annotate(f'{peak.name}\n{x0:.2f}',
-                                                          xy=(x0, ycoord),
-                                                          xytext=(0, 10), textcoords='offset points', ha='center',
-                                                          color='k',
-                                                          fontweight='bold', family='Consolas', fontsize=14)
-            peak.bkg = bkg_value
-            self.spec.canvas.draw_idle()
-
-        self._rebuild_peak_widgets(peak)
-        self.update_peak(peak)
-
-    def update_peak(self, peak):
-        name = peak.ref
-        ydata = peak.ydata(self.xdata)
-        bkg = peak.bkg
-
-        if not bkg:
-            ydata += self.bkg
-            verts = np.column_stack([np.r_[self.xdata, self.xdata[::-1]], np.r_[ydata, self.bkg[::-1]]])
-
-            self.spec.fitline[name].set_verts([verts])
-
-            if 'x0' in peak.params:
-                x0 = peak.params['x0']['value']
-                idx = find_nearest(self.xdata, x0)
-                ycoord = peak.params['A']['value'] + self.bkg[idx]
-                self.spec.etiquette[name].set_text(f'{peak.name}\n{x0:.2f}')
-                self.spec.etiquette[name].xy = (x0, ycoord)
-
+        if peak.func.is_bkg:
+            self.refresh_plot()
         else:
-            bkg = np.zeros_like(self.channel.spectra.y)
-            bkg[self.xrange] = self.bkg
-            self.spec.bkgline.set_ydata(bkg)
+            _, peak_plot = self.specview.fit_peaks.popitem()
+            peak_plot.remove()
+            self.update_fit()
 
-            for peak in self.peaks.values():
-                if not peak.bkg: self.update_peak(peak)
+        self.specview.canvas.draw_idle()
 
-        self.spec.canvas.draw_idle()
+    def get_label_coords(self, params: dict[str, DefaultParameter]) -> tuple[float, float]:
+        """Obté les coordenades de l'etiqueta del segons els paràmetres del pic donat.
 
-    def _rebuild_peak_widgets(self, peak):
-        widget = self.peaks_widgets[peak.ref]
-        for key in list(widget.keys()):
-            if key in ('name', 'function'): continue
+        Parameters
+        ----------
+        params: dict[str, DefaultParameter]
+            Diccionari de paràmetres del pic
 
-            if key == 'unique':
-                if peak.bkg:
-                    widget['unique'].config(state = 'disabled')
-                    widget['unique'].set(False)
-                else:
-                    widget['unique'].config(state = 'normal')
+        Returns
+        -------
+        x0, y0: tuple[float, float]
+            Coordenades de l'etiqueta en la gràfica.
 
-                continue
+        """
+        x0 = params["x0"].value
+        idx = find_nearest(self.xdata, x0)
+        amp = params["amp"].value
 
-            if hasattr(widget[key], 'label'): widget[key].label.destroy()
-            widget[key].widget.destroy()
+        y0 = amp + float(self.bkg[idx])
 
-            del widget[key]
+        return x0, y0
 
-        for row, name in enumerate(FuncParams[peak.function], start=2):
-            self._add_parameter_widgets(peak, peak.params[name], name, row)
+    def set_peak_plot(self, peak: PeakSpec) -> None:
+        """Actualitza els vèrtexs de l'àrea acolorida d'un pic.
 
-    def update_value(self, value, peak, par):
-        peak.params[par]['value'] = value
-        self.update_peak(peak)
-        self._update_fit()
+        Parameters
+        ----------
+        peak: PeakSpec
+            Dades del pic
 
-    def _update_fit(self):
-        ydata = np.full(self.xdata.shape, 0, dtype = float)
+        """
+        ydata = np.asarray(peak.ydata(self.xdata), dtype=np.float32)
+
+        self.specview.fit_peaks[peak.ref].update(
+            verts=get_verts(self.xdata, ydata, self.bkg),
+            label_text=peak.name,
+            label_coords=self.get_label_coords(peak.params))
+
+    def update_label(self, ref: str, name: str, value: float) -> None:
+        """Actualitza l'etiqueta del pic cada vegada que es canvia de nom.
+
+        Parameters
+        ----------
+        ref: str
+            Referència del pic
+        name: str
+            Nom del pic
+        value: float
+            Valor del centre del pic
+
+        """
+        self.specview.fit_peaks[ref].update_text(name, value)
+
+    def update_func_plot(self, ref: str, *, old_bkg: bool, new_bkg: bool) -> None:
+        """Actualitza la gràfica quan un pic canvia de tipus.
+
+        Parameters
+        ----------
+        ref: str
+            Referència del pic
+        old_bkg: bool
+            True: Fons (Abans de canviar de funció). False: Pic (Abans de canviar de funció)
+        new_bkg: bool
+            True: Fons (Després de canviar de funció). False: Pic (Després de canviar de funció)
+
+        """
+        if new_bkg != old_bkg:
+            if new_bkg:
+                peak_plot = self.specview.fit_peaks.pop(ref)
+                peak_plot.remove()
+            else:
+                self.specview.fit_peaks[ref] = PeakView(self.specview.axis, color=COLORS[len(self.peaks)])
+
+        self.refresh_plot()
+
+    def update_bkg(self) -> None:
+        """Actualitza el fons de la gràfica."""
+        background = np.zeros_like(self.spectra.y, dtype=np.float32)
+        background[self.xrange] = self.bkg
+        self.specview.bkg_line.set_ydata(background)
+
+    def update_fit(self) -> None:
+        """Actualitza les dades de la línia d'ajust."""
+        ydata = np.full(self.xdata.shape, 0, dtype=np.float32)
 
         for peak in self.peaks.values():
             ydata += peak.ydata(self.xdata)
 
-        self.spec.fitline['All'].set_data(self.xdata, ydata)
-        self.spec.canvas.draw_idle()
+        self.specview.fit_line.set_data(self.xdata, ydata)
+        self.specview.canvas.draw_idle()
 
-    def _remove_peak(self, value):
-        if not self.peaks: return
+    def refresh_plot(self) -> None:
+        """Refresca el fons, les àrees dels pics i la suma de l'ajust."""
+        self.update_bkg()
 
-        peak = next(reversed(self.peaks.values()))
-        if peak.ref in self.spec.fitline:
-            self.spec.fitline[peak.ref].remove()
-            self.spec.fitline.pop(peak.ref)
-            self.spec.etiquette[peak.ref].remove()
-            self.spec.etiquette.pop(peak.ref)
+        for peak in self.peaks.values():
+            if peak.func.is_bkg:
+                continue
 
-        self.peaks_frame[peak.ref].destroy()
-        self.peaks_frame.pop(peak.ref)
-        self.peaks_widgets.pop(peak.ref)
+            self.set_peak_plot(peak)
 
-        for key, item in self.peaks.items():
-            if item is peak:
-                del self.peaks[key]
-                break
+        self.update_fit()
+        self.specview.canvas.draw_idle()
 
-        self._update_fit()
+    def fit_data(self) -> None:
+        """Ajusta l'espectre actual i actualitza els paràmetres dels pics.
 
-    def _create_parameters(self):
-        params = Parameters()
-        for name, peak in self.peaks.items():
+        Raises
+        ------
+        RuntimeError
+            Si l'ajust ha fallat
+
+        """
+        model, init_params = self.fit_init(self.peaks)
+        spec = self.spectra
+        fit = self.specview.header.fit_key
+
+        bkg = spec.bkg if fit == "rawdata" else spec.fits[fit].bkg(spec.coords, len(spec.y)).copy()
+
+        ydata = self.ydata - bkg[self.xrange]
+        params = self.fit(self.xdata, ydata, model, init_params)
+
+        if params is None:
+            self.widgets["r2"].set(None)
+
+            msg = "L'ajust ha fallat. Prova a introduir uns altres paràmetres inicials."
+            messagebox.showerror("Error", msg)
+            raise RuntimeError(msg)
+
+        yfit = model(self.xdata, params)
+        r2 = get_r2(ydata, yfit)
+
+        for ref, peak in self.peaks.items():
             for par_name, par in peak.params.items():
-                params.add(f'{name}_{par_name}', value=par['value'], min=par['min'], max=par['max'], vary=par['vary'])
+                par.value = round(params[f"{ref}_{par_name}"].value, 3)
+                peak.par_widgets[par_name]["value"].set(par.value)
 
-        return params
+        self.widgets["r2"].set(round(r2, 4))
+        self.refresh_plot()
 
-    def _create_model(self):
-        names = list(self.peaks)
-        funcs = [self.peaks[name].function for name in names]
-
-        return linear_combination(names, funcs)
-
-    def _create_fit_result(self):
-        fit = self.spec.header.view.fit_key
-
-        if fit == 'rawdata': bkgdata = self.channel.spectra.bkgdata
-        else: bkgdata = self.channel.spectra.fits[fit].bkgdata
-
-        result = FitResult(name = self.widgets['name'].get(),
-                           units = self.channel.spectra.units,
-                           config = self.get_config(),
-                           bkgdata = bkgdata,
-                           xrange = self.xrange)
-
-        for name, peak in self.peaks.items():
-            result.peaks[peak.ref] = PeakResult(ref = peak.ref, name = peak.name, function = peak.function, bkg = peak.bkg)
-
-            for par in peak.params:
-                result.peaks[peak.ref].params[par] = np.full(self.channel.Z.shape, np.nan, dtype=float)
-
-        result.r2 = np.full(self.channel.Z.shape, np.nan, dtype=float)
-
-        return result
-
-    def _fitmap(self, value):
-        total = self.file.geometry.N[0] * self.file.geometry.N[1]
+    def fit_map(self) -> None:
+        """Inicia l'ajust dels espectres de tots els píxels del mapa."""
+        total = self.dim[0] * self.dim[1]
+        fit_name = self.widgets["name"].get()
 
         progress = Progress(self.window, title="Ajustant mapa", maximum=total)
-        threading.Thread(target=self._fitmap_thread, args=(value, progress), daemon=True).start()
+        threading.Thread(target=self._fit_map_thread, args=(fit_name, progress), daemon=True).start()
 
-    def _fitmap_thread(self, value, progress):
-        model, init_params = self._init_fit()
-        fit_result = self._create_fit_result()
+    def _fit_map_thread(self, fit_name: str, progress: Progress) -> None:
+        """Crea i calcula el resultat de l'ajust del mapa d'espectres.
 
+        Parameters
+        ----------
+        fit_name: str
+            Nom de l'ajust
+        progress: Progress
+            Classe que conté la barra de progrés
+
+        Raises
+        ------
+        ValueError
+            Si pics marcats com a resolubles tenen límits del centre (x0) infinits
+
+        """
+        model, init_params = self.fit_init(self.peaks)
         params = init_params.copy()
-        peakrange = dict()
+        peakrange = self._create_peak_ranges(params)
+
+        if peakrange is None:
+            msg = "Els pics marcats com a resolubles no poden tindre els límits del centre (x0) infinits."
+            messagebox.showerror("Error en l'ajust", msg)
+            progress.finish()
+            raise ValueError(msg)
+
+        fit_result = self._obtain_fit_data(init_params, model, peakrange, progress)
+
+        if fit_result is None:
+            return
+
+        self.spectra.fits[fit_name] = fit_result
+        self.window.after(0, self._fit_map_finish, fit_name, progress)
+
+    def _create_fit_result(self) -> FitData:
+        """Crea l'objecte que conté les dades de l'ajust.
+
+        Returns
+        -------
+        fit_result: FitData
+            Classe de l'ajust
+
+        """
+        fit = self.specview.header.fit_key
+        bkgdata = self.spectra.bkgdata if fit == "rawdata" else self.spectra.fits[fit].bkgdata
+
+        peaks: dict[str, PeakData] = {}
+
+        for peak in self.peaks.values():
+            peaks[peak.ref] = PeakData(
+                ref=peak.ref,
+                name=peak.name,
+                function=peak.function,
+                is_bkg=peak.func.is_bkg)
+
+            for par in peak.params:
+                peaks[peak.ref].params[par] = np.full(self.spectra.ydata.shape[:2], np.nan, dtype=float)
+
+        r2_value = np.full(self.spectra.ydata.shape[:2], np.nan, dtype=float)
+
+        config = {peak.ref: PeakDataConfig(
+            ref=peak.ref,
+            name=peak.name,
+            function=peak.function,
+            unique=peak.unique,
+            params={key: replace(param) for key, param in peak.params.items()})
+            for peak in self.peaks.values()}
+
+        return FitData(
+            name=self.widgets["name"].get(),
+            units=self.spectra.units,
+            r2=r2_value,
+            xrange=self.xrange,
+            config=config,
+            bkgdata=bkgdata,
+            peaks=peaks)
+
+    def _create_peak_ranges(self, init_params: ParametersProtocol)\
+                             -> dict[str, slice[int, int, int]] | None:
+        """Valida els pics resolubles i determina els seus rangs dins de l'espectre.
+
+        Parameters
+        ----------
+        init_params: ParametersProtocol
+            Paràmetres inicials
+
+        Returns
+        -------
+        peak_ranges: dict[str, slice] | None
+            Rang dels pics resolubles. Retorna None si cap límit és infinit
+
+        """
+        peak_ranges: dict[str, slice[int, int, int]] = {}
 
         for key, peak in self.peaks.items():
-            if peak.bkg: continue
+            if peak.func.is_bkg or not peak.unique:
+                continue
 
-            if peak.unique:
-                if 'x0' not in peak.params:
-                    messagebox.showerror("Error en l'ajust",
-                                         "Les funcions que no siguen pics no poden ser resolubles.")
-                    progress.finish()
-                    return
+            x0 = peak.params["x0"]
 
-                if np.isinf(peak.params['x0']['min']) or np.isinf(peak.params['x0']['max']):
-                    messagebox.showerror("Error en l'ajust",
-                                         "Els pics marcats com a resolubles no poden tindre els límits del centre (x0) infinits.")
-                    progress.finish()
-                    return
+            if np.isinf(x0.min) or np.isinf(x0.max):
+                return None
 
-                left_index, right_index= sorted(find_nearest(self.xdata, [params[f'{key}_x0'].min, params[f'{key}_x0'].max]))
-                peakrange[key] = slice(left_index, right_index)
+            left, right = sorted(find_nearest(self.xdata, [init_params[f"{key}_x0"].min, init_params[f"{key}_x0"].max]))
 
-        spectra = self.channel.spectra.ydata
-        fit = self.spec.header.view.fit_key
+            peak_ranges[key] = slice(left, right)
 
-        if fit == 'rawdata': bkg = self.channel.spectra.bkgdata
-        else: bkg = self.channel.spectra.fits[fit].bkgdata
+        return peak_ranges
 
-        mask = self.file.objects.mask
+    def _init_unique_peaks(self, params: ParametersProtocol, peakrange: dict[str, slice[int, int, int]],
+                            ydata: NDArray[np.float32], bkg: float) -> None:
+        """Assigna els paràmetres inicials als pics resolubles.
 
-        current = 0
+        Parameters
+        ----------
+        params: ParametersProtocol
+            Paràmetres actuals
+        peakrange: dict[str, slice[int, int ,int]]
+            Rang dels pics resolubles
+        ydata: NDArray[np.float32]
+            Dades de l'espectre corresponent
+        bkg: float
+            Correcció de fons per a l'amplitud
+
+        """
+        for key, p_range in peakrange.items():
+            imax = np.argmax(ydata[p_range])
+
+            amp = float(ydata[p_range][imax]) - bkg
+            x0 = float(self.xdata[p_range][imax])
+
+            params[f"{key}_amp"].value = amp
+            params[f"{key}_x0"].value = x0
+
+    def _obtain_fit_data(self,
+        init_params: ParametersProtocol,
+        model: Callable[[NDArray[np.float32], ParametersProtocol], NDArray[np.float32]],
+        peakrange: dict[str, slice[int, int, int]],
+        progress: Progress) -> FitData | None:
+        """Calcula les dades de l'ajust per al mapa d'espectres.
+
+        Parameters
+        ----------
+        init_params: ParametersProtocol
+            Paràmetres inicials
+        model: Callable[[NDArray[np.float32], ParametersProtocol], NDArray[np.float32]]
+            Funció a què s'ajusten les dades
+        peakrange: dict[str, slice[int, int, int]]
+            Diccionari que conté el rang dels pics resolubles
+        progress: Progress
+            Objecte que conté la barra de progrés
+
+        Returns
+        -------
+        fit_result: FitData | None
+            Classe amb els resultats de l'ajust. Si es cancel·la el procés a meitat, retorna None
+
+        """
+        fit_result = self._create_fit_result()
+        spectra = self.spectra.ydata
+
+        params = init_params.copy()
 
         for i in range(spectra.shape[0]):
             for j in range(spectra.shape[1]):
                 # Comprovar cancel·lació
                 if progress.cancelled():
                     progress.finish("Operació cancel·lada")
-                    return
+                    return None
 
-                current += 1
-                progress.update(current, text=f"Ajustant: {current}/{progress.maximum}")
+                progress.increment()
 
-                if not mask[i, j]: continue
+                if not self.mask[i, j]:
+                    continue
 
-                bkg_setpoint = 0
-
-                if bkg is None:
+                if fit_result.bkgdata is None:
                     ydata = spectra[i, j][self.xrange]
                     bkg_setpoint = np.nanpercentile(ydata, 5)
-                else: ydata = spectra[i, j][self.xrange] - bkg[i, j][self.xrange]
+                else:
+                    ydata = spectra[i, j][self.xrange] - fit_result.bkgdata[i, j][self.xrange]
+                    bkg_setpoint = 0
 
-                for key, peak in self.peaks.items():
-                    if not peak.unique or peak.bkg: continue
+                self._init_unique_peaks(params, peakrange, ydata, bkg_setpoint)
+                fit_params = self.fit(self.xdata, ydata, model, params)
 
-                    peak = peakrange[key]
-                    imax = np.argmax(ydata[peak])
-
-                    amp = float(ydata[peak][imax]) - bkg_setpoint
-                    x0 = float(self.xdata[peak][imax])
-
-                    params[f'{key}_A'].value = amp
-                    params[f'{key}_x0'].value = x0
-
-                result = self._fit(self.xdata, ydata, model, params)
-
-                if result is None:
+                if fit_params is None:
                     params = init_params.copy()
                     continue
 
-                yfit = model(self.xdata, result.params)
-                r2 = self._r2(ydata, yfit)
+                yfit = model(self.xdata, fit_params)
+                r2 = get_r2(ydata, yfit)
 
-                if (not result.success or any(p.stderr is None for p in result.params.values()) or r2 < 0.5):
+                if r2 < 0.5:
                     params = init_params.copy()
                     continue
 
-                params = result.params
+                params = fit_params
 
                 for name, peak in self.peaks.items():
                     for par_name in peak.params:
-                        fit_result.peaks[peak.ref].params[par_name][i, j] = \
-                            (params[f'{name}_{par_name}'].value)
+                        fit_result.peaks[peak.ref].params[par_name][i, j] = params[f"{name}_{par_name}"].value
 
                 fit_result.r2[i, j] = r2
 
-        name = self.widgets['name'].get()
-        self.channel.spectra.fits[name] = fit_result
-        self.spec.header.view.fit = name
+        return fit_result
 
-        self.window.after(0, self._fitmap_finished, name, progress)
+    def _fit_map_finish(self, name: str, progress: Progress) -> None:
+        """Selecciona el nou ajust per a mostrar-lo en pantalla i tanca la finestra de progrés.
 
-    def _fitmap_finished(self, name, progress):
-        combofit = self.spec.header.view.widgets['fit'].widget
+        Parameters
+        ----------
+        name: str
+            Nom de l'ajust
+        progress: Progress
+            Objecte que conté la barra de congrés
+
+        """
+        combofit = self.specview.header.widgets["fit"]
 
         combofit.options[name] = name
         combofit.config(values=list(combofit.options.keys()))
 
-        self.spec.header.view.widgets['fit'].set(name)
+        self.specview.header.fit = name
         progress.finish()
 
-    def _init_fit(self):
-        names = list(self.peaks)
-        funcs = [self.peaks[name].function for name in names]
+    @staticmethod
+    def fit_init(peaks: dict[str, PeakSpec]) ->\
+                 tuple[Callable[[NDArray[np.float32], ParametersProtocol], NDArray[np.float32]],
+                           ParametersProtocol]:
+        """Inicia la funció model i el paràmetres amb què es faran l'ajust.
 
-        model = linear_combination(names, funcs)
-        params = self._create_parameters()
+        Parameters
+        ----------
+        peaks: dict[str, PeakSpec]
+            Diccionari amb els pics creats.
 
-        return model, params
+        Returns
+        -------
+        model: tuple[Callable[[NDArray[np.float32], ParametersProtocol], NDArray[np.float32]]
+            Funció model formada a partir de la combinació lineal de les funcions de cada pic
+        params: ParametersProtocol
+            Paràmetres lmfit per a fer la funció
+
+        """
+        funcs = {ref: peak.func for ref, peak in peaks.items()}
+
+        model = linear_combination(funcs)
+
+        params = Parameters()
+        for ref, peak in peaks.items():
+            for par_name, par in peak.params.items():
+                params.add(
+                    f"{ref}_{par_name}",
+                    value=par.value,
+                    min=par.min,
+                    max=par.max,
+                    vary=par.vary,
+                )
+
+        return model, cast("ParametersProtocol", params)
 
     @staticmethod
-    def _fit(x, y, model, params):
-        def residual(params):
+    def fit(x: NDArray[np.float32], y: NDArray[np.float32],
+            model: Callable[[NDArray[np.float32], ParametersProtocol], NDArray[np.float32]],
+            params: ParametersProtocol) -> ParametersProtocol | None:
+        """Ajusta les dades al model dins del rang seleccionat.
+
+        Parameters
+        ----------
+        x: NDArray[np.float32]
+            Rang sobre el que s'avalua l'ajust
+        y: NDArray[np.float32]
+            Conjunt de dades que s'ajusta
+        model: Callable[[NDArray[np.float32], ParametersProtocol], NDArray[np.float32]]
+            Funció sobre la que s'ajusten les dades
+        params: ParametersProtocols
+            Paràmetres de la funció que s'optimitzen
+
+        Returns
+        -------
+        params: ParametersProtocol | None
+            Paràmetres obtinguts de l'ajust. Si l'ajust no és satisfactori, retorna None
+
+        """
+        def residual(params: ParametersProtocol) -> NDArray[np.float32]:
             return model(x, params) - y
 
-        try:
-            return minimize(residual, params, method="least_squares", diff_step=1e-4)
+        result = cast("MinimizerProtocol", minimize(residual, params, method="least_squares", diff_step=1e-4))
 
-        except (ValueError, RuntimeError) as e:
+        if not result.success or any(p.stderr is None for p in result.params.values()):
             return None
 
-    @staticmethod
-    def _r2(y, yfit):
-        ss_res = np.sum((y - yfit) ** 2)
-        ss_tot = np.sum((y - np.mean(y)) ** 2)
-
-        r2 = 1 - ss_res / ss_tot
-
-        return r2
-
-    def _draw_fit(self, y, params, r2 = None):
-        self.spec.fitline['All'].set_ydata(y)
-        self.spec.canvas.draw_idle()
-
-        for ref, peak in self.peaks.items():
-            for par_name, par in peak.params.items():
-                par['value'] = round(params[f'{ref}_{par_name}'].value, 3)
-                self.peaks_widgets[ref][f'{par_name}_value'].set(par['value'])
-
-        for peak in self.peaks.values():
-            self.update_peak(peak)
-
-        self._update_fit()
-        self.widgets['r2'].set(round(r2, 4))
-
-    def _fitdata(self, value = None):
-        model, init_params = self._init_fit()
-        spec = self.channel.spectra
-        spectra = spec.y
-        fit = self.spec.header.view.fit_key
-
-        if fit == 'rawdata': bkg = spec.bkg
-        else: bkg = spec.fits[fit].bkg(spec.coords, len(spec.y)).copy()
-
-        ydata = spectra[self.xrange] - bkg[self.xrange]
-        result = self._fit(self.xdata, ydata, model, init_params)
-
-        if result is not None:
-            if result.success or not any(p.stderr is None for p in result.params.values()): pass
-        else:
-            messagebox.showerror('Error', "L'ajust ha fallat. Prova a introduir uns altres paràmetres inicials.")
-            self.widgets['r2'].set('')
-            return
-
-        yfit = model(self.xdata, result.params)
-        r2 = self._r2(ydata, yfit)
-        self._draw_fit(yfit, result.params, r2)
-
-    def get_config(self):
-        config = FitConfig(name=self.widgets['name'].get())
-
-        for ref, peak in self.peaks.items():
-            widget = self.peaks_widgets[ref]
-            peak.name = widget['name'].get()
-            peak.function = widget['function'].get()
-
-            for parameter, data in peak.params.items():
-                data['value'] = widget[f'{parameter}_value'].get()
-                data['min'] = widget[f'{parameter}_min'].get()
-                data['max'] = widget[f'{parameter}_max'].get()
-                data['vary'] = widget[f'{parameter}_vary'].get()
-
-            config.peaks[peak.name] = peak
-
-        return config
-
-    def config_to_parameters(config):
-        params = Parameters()
-
-        for i, peak in enumerate(config.peaks, 1):
-            prefix = f'P{i}'
-
-            for name in ('x0', 'FWHM', 'A'):
-                p = getattr(peak, name)
-                kwargs = {'value': p['value']}
-
-                if p['min'] is not None: kwargs['min'] = p['min']
-                if p['max'] is not None: kwargs['max'] = p['max']
-                if p['vary'] is not None: kwargs['vary'] = p['vary']
-
-                params.add(f'{prefix}_{name}', **kwargs)
-
-        return params
-
-    def _create_widgets(self):
-        name = f'Fit{len(self.channel.spectra.fits) + 1}'
-
-        self.widgets = {
-            'name': Widget(key='name', var_type=str, init=name,
-                    text='Nom:', widget='entry', widget_kwargs = {'width': 10}),
-
-            'r2': Widget(key='r2', var_type=float, init='',
-                       text='R²', widget='entry', widget_kwargs = {'state': 'readonly', 'width': 10}),
-
-            'add': Widget(key = 'add', var_type = str, init = 'Afegir pic',
-                    widget = 'button', setter = self._add_peak, setter_kwargs = {'new': True}),
-
-            'remove': Widget(key='remove', var_type=str, init='Eliminar pic',
-                            widget='button', setter=self._remove_peak),
-
-            'fit': Widget(key = 'fit', var_type = str, init = 'Ajustar pic',
-                          widget = 'button', setter = self._fitdata),
-
-            'fitmap': Widget(key = 'fitmap', var_type = str, init = 'Ajustar mapa complet',
-                             widget = 'button', setter = self._fitmap)}
+        return result.params

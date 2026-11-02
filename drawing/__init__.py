@@ -1,3 +1,1 @@
-from . import arrows, mapdraw, plots
-
-__all__ = ["arrows", "mapdraw", "plots"]
+"""Permet a Python localitzar la carpeta drawing com a part del projecte."""

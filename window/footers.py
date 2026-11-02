@@ -1,100 +1,163 @@
+"""Classes que creen i controlen els peus de figura de l'aplicació."""
+
+from abc import ABC, abstractmethod
 from tkinter.ttk import Frame
-from .widgets import Widget
+from typing import TYPE_CHECKING, TypedDict
+
 from process.converter import coords_to_pixel
 
-class FooterMap:
-    def __init__(self, map_view):
-        self.map = map_view
-        self.view = ViewFooterMap(parent=self.map.model.content, controller=self)
+from .widgets import Widget
 
-        self.map.canvas.mpl_connect('motion_notify_event', self.track_mouse)
+if TYPE_CHECKING:
+    from matplotlib.backend_bases import MouseEvent
 
-    @property
-    def channel(self):
-        return self.map.channel
+    from classes.views import FigureView, MapView, SpecView  # ruff: ignore[unused-import]
+    from window.widgets import GenericWidgets
 
-    @property
-    def frame(self):
-        return self.view.frame
 
-    def track_mouse(self, event):
-        if event.inaxes == self.map.axis:
-            x_pixel, y_pixel = coords_to_pixel([(event.xdata, event.ydata)], self.map.geometry.N, self.map.geometry.midaBase)[0]
+class Footer[TView: FigureView](Frame, ABC):
+    """Classe base general d'un peu de figura."""
 
-            self.view.widgets['track_x'].set(x_pixel+1)
-            self.view.widgets['track_y'].set(y_pixel+1)
-            self.view.widgets['track_z'].set(float(f"{self.channel.Z[y_pixel, x_pixel]:.3f}"))
+    widgets: GenericWidgets
 
-        else:
-            for key in ['track_x', 'track_y', 'track_z']: self.view.widgets[key].set('')
+    def __init__(self, view: TView) -> None:
+        """Crea els ginys i connecta les interaccions de passada de ratolí sobre la figura corresponent."""
+        super().__init__(view.file.content)
 
-class ViewFooterMap:
-    def __init__(self, parent, controller):
-        self.controller = controller
-
-        self.frame = Frame(parent)
-        self.frame.columnconfigure(0, weight=1)
+        self.view = view
+        self.widgets: dict[str, Widget[str]]
 
         self._create_widgets()
 
-    @property
-    def channel(self):
-        return self.controller.channel
+        self.view.canvas.mpl_connect("motion_notify_event", self._track_mouse)
 
-    def _create_widgets(self): # Afegeix controls per canviar el color del mapa i de l'escala.
+    @abstractmethod
+    def _track_mouse(self, event: MouseEvent) -> None:
+        """Indica els valors de la figura en els ginys del peu.
+
+        Parameters
+        ----------
+        event: MouseEvent
+            Interacció del ratolí amb la figura
+
+        """
+
+    @abstractmethod
+    def _create_widgets(self) -> None:
+        """Crea els ginys i els col·loca dins del peu de la figura."""
+
+
+class FooterMapWidgets(TypedDict):
+    """Ginys principals dels peus de figura."""
+
+    track_x: Widget[str]
+    track_y: Widget[str]
+    track_z: Widget[str]
+
+
+class FooterMap(Footer["MapView"]):
+    """Controla el peu de figura dels mapes."""
+
+    widgets: FooterMapWidgets
+
+    def _track_mouse(self, event: MouseEvent) -> None:
+        if event.xdata is None or event.ydata is None or event.inaxes != self.view.axis:
+            self.widgets["track_x"].set(None)
+            self.widgets["track_y"].set(None)
+            self.widgets["track_z"].set(None)
+            return
+
+        x_pixel, y_pixel = coords_to_pixel([(event.xdata, event.ydata)],
+        self.view.file.geometry.dim, self.view.file.geometry.base_size)[0]
+
+        self.widgets["track_x"].set(f"{x_pixel + 1}")
+        self.widgets["track_y"].set(f"{y_pixel + 1}")
+        self.widgets["track_z"].set(f"{self.view.channel.data[y_pixel, x_pixel]:.3f}")
+
+    def _create_widgets(self) -> None:  # Afegeix controls per canviar el color del mapa i de l'escala.
         self.widgets = {
-            'track_x': Widget(key='track_x', var_type=str,
-                       text="X", widget='entry', widget_kwargs={"state": 'readonly', "width": 10}),
-            'track_y': Widget(key='track_y', var_type=str,
-                       text="Y", widget='entry', widget_kwargs={"state": 'readonly', "width": 10}),
-            'track_z': Widget(key='track_z', var_type=str,
-                       text=f"{self.channel.name} ({self.channel.units})", widget='entry', widget_kwargs={"state": 'readonly', "width": 10})}
+            "track_x": Widget(
+                key="track_x",
+                var_type=str,
+                text="X",
+                widget="entry",
+                widget_kwargs={"state": "readonly", "width": 10},
+            ),
+            "track_y": Widget(
+                key="track_y",
+                var_type=str,
+                text="Y",
+                widget="entry",
+                widget_kwargs={"state": "readonly", "width": 10},
+            ),
+            "track_z": Widget(
+                key="track_z",
+                var_type=str,
+                text=f"{self.view.channel.name} ({self.view.channel.units})",
+                widget="entry",
+                widget_kwargs={"state": "readonly", "width": 10},
+            ),
+        }
 
-        for i, widget in enumerate(self.widgets.values()): widget.add(self.frame, row = 0, col = 2*i + 1)
+        for i, widget in enumerate(self.widgets.values()):
+            if not isinstance(widget, Widget):
+                msg = "La variable donada no és un objecte de tipus Widget."
+                raise TypeError(msg)
 
-class FooterSpec:
-    def __init__(self, spec_view):
-        self.spec = spec_view
-        self.view = ViewFooterSpec(parent=self.spec.model.content, controller=self)
+            widget.add(self, row=0, col=2 * i + 1)
 
-        self.spec.canvas.mpl_connect('motion_notify_event', self.track_mouse)
 
-    @property
-    def channel(self):
-        return self.spec.channel
+class FooterSpecWidgets(TypedDict):
+    """Ginys principals dels peus de figura."""
 
-    @property
-    def frame(self):
-        return self.view.frame
+    track_x: Widget[str]
+    track_y: Widget[str]
+    laser: Widget[float]
 
-    def track_mouse(self, event):
-        if event.inaxes == self.spec.axis:
-            self.view.widgets['track_x'].set(f'{event.xdata:.3f}')
-            self.view.widgets['track_y'].set(int(event.ydata))
 
-        else:
-            for key in ['track_x', 'track_y']: self.view.widgets[key].set('')
+class FooterSpec(Footer["SpecView"]):
+    """Controla el peu de figura dels espectres."""
 
-class ViewFooterSpec:
-    def __init__(self, parent, controller):
-        self.controller = controller
+    widgets: FooterSpecWidgets
 
-        self.frame = Frame(parent)
-        self.frame.columnconfigure(0, weight=1)
+    def _track_mouse(self, event: MouseEvent) -> None:
+        if event.xdata is None or event.ydata is None or event.inaxes != self.view.axis:
+            self.widgets["track_x"].set(None)
+            self.widgets["track_y"].set(None)
+            return
 
-        self._create_widgets()
+        self.widgets["track_x"].set(f"{event.xdata:.3f}")
+        self.widgets["track_y"].set(f"{event.ydata}")
 
-    @property
-    def channel(self):
-        return self.controller.channel
-
-    def _create_widgets(self): # Afegeix controls per canviar el color del mapa i de l'escala.
+    def _create_widgets(self) -> None:  # Afegeix controls per canviar el color del mapa i de l'escala.
         self.widgets = {
-            'track_x': Widget(key='track_x', var_type=str,
-                              text=self.controller.spec.xlabels[self.channel.spectra.units], widget='entry', widget_kwargs={"state": 'readonly', "width": 10}),
-            'track_y': Widget(key='track_y', var_type=str,
-                              text="Intensity (cts)", widget='entry', widget_kwargs={"state": 'readonly', "width": 10}),
-            'laser': Widget(key='laser', var_type=str, init=self.controller.spec.model.controller.objects.laser,
-                           text='λ₀ (nm):', widget='entry', widget_kwargs={"state": 'readonly', "width": 10})}
+            "track_x": Widget(
+                key="track_x",
+                var_type=str,
+                text=self.view.xlabels[self.view.channel.spec.units],
+                widget="entry",
+                widget_kwargs={"state": "readonly", "width": 10},
+            ),
+            "track_y": Widget(
+                key="track_y",
+                var_type=str,
+                text="Intensity (cts)",
+                widget="entry",
+                widget_kwargs={"state": "readonly", "width": 10},
+            ),
+            "laser": Widget(
+                key="laser",
+                var_type=float,
+                init=self.view.channel.spec.laser,
+                text="λ₀ (nm):",
+                widget="entry",
+                widget_kwargs={"state": "readonly", "width": 10},
+            ),
+        }
 
-        for i, widget in enumerate(self.widgets.values()): widget.add(self.frame, row = 0, col = 2*i + 1)
+        for i, widget in enumerate(self.widgets.values()):
+            if not isinstance(widget, Widget):
+                msg = "La variable donada no és un objecte de tipus Widget."
+                raise TypeError(msg)
+
+            widget.add(self, row=0, col=2 * i + 1)

@@ -1,5 +1,13 @@
-from . import widgets
-from .headers import HeaderMap
-from .builder import BaseWindow, BaseFigureWindow, BaseMapWindow, BaseSpecWindow
+"""Permet a Python localitzar la carpeta window com a part del projecte."""
 
-__all__ = ["HeaderMap", "BaseWindow", "BaseFigureWindow", "BaseMapWindow", "BaseSpecWindow"]
+from .builder import BaseWindow, FigureWindow, ImageWindow, MapWindow, SpecWindow
+from .widgets import Widget
+
+__all__ = [
+    "BaseWindow",
+    "FigureWindow",
+    "ImageWindow",
+    "MapWindow",
+    "SpecWindow",
+    "Widget",
+]

@@ -1,318 +1,636 @@
-from tkinter.ttk import Label, Combobox, Frame, Progressbar
-from tkinter import Entry, Label, Scale, messagebox, StringVar, DoubleVar, IntVar, BooleanVar, Variable, Toplevel, Button, Radiobutton, Checkbutton
-from matplotlib import colors as mcolors
-from functools import partial
-from typing import Callable, Any, Literal
+"""Ginys de l'aplicació."""
+
 import threading
+import tkinter as tk
+from collections.abc import Mapping
+from functools import partial
+from tkinter import ttk
+from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict, Unpack, cast
 
-class ObjectVar(Variable):
-    _default = None
+from matplotlib import colors as mcolors
 
-    def __init__(self, master=None, value=None, name=None):
-        Variable.__init__(self, master, name)
-        self._value = value
+from drawing.plots import PLOT_COLORS
 
-    def set(self, value):
-        self._value = value
-        self._tk.globalsetvar(self._name, value)  # per compatibilitat interna
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
-    def get(self):
-        return self._value
+    from classes.protocols import VariableProtocol
 
-TYPE_MAP = {float: DoubleVar, int: IntVar, bool: BooleanVar, str: StringVar, object: ObjectVar}
+TYPE_MAP: dict[type, type[tk.Variable]] = {
+    bool: tk.BooleanVar,
+    int: tk.IntVar,
+    float: tk.DoubleVar,
+    str: tk.StringVar,
+}
 
-class Widget:
-    def __init__(self, key: str, var_type: type, init: Any = None,
-                 text: str = '', widget: str = 'entry', widget_kwargs: dict | None = None,
-                 setter: Callable | None = None, mode: str = "args", setter_kwargs: dict | None = None,
-                 canvas = None):
 
-        self.key = key
+type VarType = bool | int | float | str | None
+type GenericWidgets = Mapping[str, object]
+
+type WidgetType = Literal[
+    "button",
+    "cb",
+    "checkbutton",
+    "colorcb",
+    "entry",
+    "radiobutton",
+    "scale",
+]
+
+type WidgetInstance = (
+    ttk.Button
+    | ttk.Checkbutton
+    | ttk.Combobox
+    | ttk.Entry
+    | ttk.Frame
+    | tk.Scale
+)
+
+
+class Widget[T: VarType]:
+    """Classe que crea i gestiona totes les accions relatives a un ttk.Widget lligat a un tk.Variable."""
+
+    def __init__(
+        self,
+        key: str,
+        var_type: type[VarType] | None = None,
+        init: T | None = None,
+        text: str = "",
+        widget: WidgetType = "entry",
+        widget_kwargs: dict[str, object] | None = None,
+        setter: Callable[[T], None] | object | None = None,
+        mode: Literal["call", "attr", "dict"] = "call") -> None:
+        """Crea les característiques del giny abans de lligar-lo a un objecte visual.
+
+        Parameters
+        ----------
+        key: str
+            Clau del giny
+        var_type: type[VarType] | None = None
+            Tipus de d'objecte tk.Variable que es crearà. Si és None,
+            el valor del giny no és modificable i la funció no necessita arguments
+        init: T | None = None
+            Valor inicial del giny
+        text: str = ""
+            Text de l'etiqueta que precedeix el giny
+        widget: WidgetType = "entry"
+            Classe de giny
+        widget_kwargs: dict[str, object] | None = None
+            Característiqes addicionals del giny
+        setter: Callable[[T], None] | object | None = None,
+            Funció o objecte que es cridarà quan s'active el callback
+        mode: Literal["call", "attr", "dict"] = "call") -> None:
+            Classe de d'objecte que és el setter
+
+        Raises
+        ------
+        TypeError
+            Si s'ha cridat un setter sense cap variable i no és una funció (callable)
+
+        """
         self.var_type = var_type
         self.init = init
 
-        self.text = text
-        self.widget_type = widget
-        self.widget_kwargs = {} if widget_kwargs is None else widget_kwargs
+        self.value: VariableProtocol[T]
+        self.callback: Callable[[T], None] | None = None
+        self.action: Callable[[], None] | None = None
 
-        if setter is not None:
-            self.callback = partial(self._update, setter, mode = mode, canvas = canvas,
-                                    **setter_kwargs if setter_kwargs is not None else {})
-        else: self.callback = None
+        self.text: str = text
+        self.widget_type: WidgetType = widget
+        self.widget_kwargs: dict[str, object] = {} if widget_kwargs is None else widget_kwargs
+        self.widget: tk.Widget
 
-    def add(self, frame, row = 0, col = 0, columnspan = 1):
-        self.value = TYPE_MAP[self.var_type](frame, value=self.init)
-        self.widget = WIDGET_MAP[self.widget_type](self._func, frame, set_value=self.value, **self.widget_kwargs)
+        self.label: ttk.Label | None = None
+        self.options: dict[str, T] = {}
+
+        self._make_setter(key, setter, mode)
+
+        if var_type is None:
+            if mode != "call":
+                msg = "Un widget sense variable només admet el mode 'call'."
+                raise TypeError(msg)
+
+            if setter is not None and not callable(setter):
+                msg = "L'acció ha de ser callable."
+                raise TypeError(msg)
+
+            self.action = cast("Callable[[], None] | None", setter)
+
+        else:
+            if var_type not in TYPE_MAP:
+                msg = (f"Tipus no admés: {var_type.__name__}. Ha de ser bool, int, float o str.")
+                raise TypeError(msg)
+
+            self.callback = self._make_setter(key, setter, mode)
+
+        if "options" in self.widget_kwargs:
+            options = self.widget_kwargs.pop("options")
+
+            if isinstance(options, dict):
+                self.options = cast("dict[str, T]", options)
+            else:
+                opts_keys = cast("list[str]", options)
+                opts_values = cast("list[T]", options)
+                self.options = dict(zip(opts_keys, opts_values, strict=False))
+
+    def add(self, frame: ttk.Frame, row: int = 0, col: int = 0, columnspan: int = 1) -> None:
+        """Associa un Widget a un entorn visual.
+
+        Parameters
+        ----------
+        frame: ttk.Frame
+            Entorn visual
+        row: int = 0
+            Fila en què es coloca el Widget
+        col: int = 0
+            Columna en què es coloca el Widget
+        columnspan: int = 1
+            Nombre de columnes que ocupa el Widget
+
+        """
+        self.value = TYPE_MAP[self.var_type](frame, value=self.init) if self.var_type is not None\
+                               else TYPE_MAP[str](frame, value=self.init)
+
+        widget_kwargs = self.widget_kwargs.copy()
+        widget_kwargs["set_value"] = self.value
+
+        self.widget = self._create_widget(partial(self._func), frame)
 
         if self.text:
-            label = Label(frame, text=self.text, font=('Helvetica', 9, 'bold'), bg='#2b2b2b', fg='white')
-            label.grid(row=row, column=col, padx=5, pady=4, sticky='nw')
-            self.label = label  # afegim el label com a atribut del widget
-            col = col + 1
+            self.label = ttk.Label(frame, text=self.text)
+            self.label.grid(row=row, column=col, padx=5, pady=4, sticky="nw")
+            col += 1
 
-        self.widget.grid(row=row, column=col, columnspan = columnspan, padx=5, pady=4, sticky='nw')
+        self.widget.grid(row=row, column=col, columnspan=columnspan, padx=5, pady=4, sticky="nw")
 
-    def set(self, value):
-        self.value.set(value)
+    def set(self, value: T | None) -> None:
+        """Dona un nou valor a la variable tkinter i executa el callback.
 
-        if self.widget_type == 'cb':
-            key = next(key for key, val in self.widget.options.items() if val == value)
+        Parameters
+        ----------
+        value: T | None
+            Nou valor de tk.Variable
+
+        Raises
+        ------
+        ValueError
+            Si el valor donat és None i els ginys no són comboboxes o entrades, no es permet que es buide el giny.
+
+        """
+        if value is None:
+            if self.var_type is str:
+                cast("VariableProtocol[str]", self.value).set("")
+            else:
+                msg = "El giny corresponent no accepta None."
+                raise ValueError(msg)
+        else:
+            self.value.set(value)
+
+        if isinstance(self.widget, ttk.Combobox):
+            key = next((key for key, val in self.options.items() if val == value), "")
             self.widget.set(key)
 
-        if self.callback: self.callback(self.get(), self.key)
+        if self.callback is not None:
+            self.callback(self.get())
 
-    def get(self):
+    def get(self) -> T:
+        """Obté el valor de tk.Variable.
+
+        Returns
+        -------
+        value: T
+            Estat actual de la variable
+
+        """
         return self.value.get()
 
-    def config(self, *args, **kwargs):
-        return self.widget.config(*args, **kwargs)
+    def config(self, *args: object, **kwargs: object) -> None:
+        """Configuració del giny.
 
-    def _func(self, event = None):
-            if self.callback:
-                self.callback(self.get(), self.key)
+        Parameters
+        ----------
+        *args: object
+            Paràmetres posicionals donats
+        **kwargs: object
+            Paràmetres amb la clau fixa donats
 
-    @staticmethod
-    def _update(func: callable, value, name: str, mode: str, canvas = None, **extra):
-        try:
-            match mode:
-                case "args": func(value, **extra)
-                case "kwargs": func(**{name: value}, **extra)
-                case "attr": setattr(func, name, value)
-                case "dict": func[name] = value
-                case _: raise ValueError(f"Mode d'actualització desconegut: {mode!r}")
+        """
+        self.widget.config(*args, **kwargs)
 
-        except Exception as e:
-            messagebox.showerror("Error en l'actualització", str(e))
+    def _create_widget(self, func: partial[None], frame: ttk.Frame) -> WidgetInstance:
+        """Crea el giny de tkinter segons el tipus triat.
+
+        Parameters
+        ----------
+        func: partial[None]
+            Funció que s'executa quan s'interactua amb el giny
+        frame: ttk.Frame
+            Requadre visual on se situarà el giny
+
+        Returns
+        -------
+        tk.Widget: WidgetInstance
+            Objecte giny de tkinter
+
+        """
+        kwargs = self.widget_kwargs
+        widget: WidgetInstance
+
+        value = cast("tk.Variable", self.value)
+        match self.widget_type:
+            case "button":
+                widget = _add_button(func, frame, value, **cast("ButtonOptions", kwargs))
+
+            case "cb":
+                widget = _add_combobox(
+                    func, frame, cast("tk.StringVar", value), options=self.options, **cast("ComboboxOptions", kwargs))
+
+            case "checkbutton":
+                widget = _add_checkbutton(func, frame, value)
+
+            case "colorcb":
+                widget = _add_colorcombobox(func, frame, cast("tk.StringVar", value))
+
+            case "entry":
+                widget = _add_entry(func, frame, value, **cast("EntryOptions", kwargs))
+
+            case "radiobutton":
+                widget = _add_radiobuttons(func, frame, value, options=self.options, **cast("RadioOptions", kwargs))
+
+            case "scale":
+                widget = _add_scale(func, frame, cast("tk.IntVar | tk.DoubleVar", value),
+                        **cast("ScaleOptions", kwargs))
+
+        return widget
+
+    def _func(self, display_var: str | None = None) -> None:
+        """Retorna la funció corresponent segons si necessita un paràmetre per a cridar-se o no.
+
+        Parameters
+        ----------
+        display_var: str | None = None
+            Text mostrat en pantalla que representa la variable. Només és diferent per als combobox.
+
+        """
+        if (isinstance(self.widget, ttk.Combobox) and display_var is not None):
+            self.set(value=self.options[display_var])
             return
 
-        if canvas: canvas.draw_idle()
-
-class Default:
-    @staticmethod
-    def colors(): 
-        return ['black', 'blue', 'green', 'red', 'cyan', 'magenta', 'yellow', 'white',
-                'orange', 'purple', 'lime', 'turquoise', 'navy']
+        if self.action is not None:
+            self.action()
+        elif self.callback is not None:
+            self.callback(self.get())
 
     @staticmethod
-    def fonts():
-        return ['DejaVu Sans',  # font per defecte de Matplotlib
-        'Arial', 'Calibri', 'Cambria', 'Courier New', 'Times New Roman', 'Verdana', 'Tahoma', 'Trebuchet MS', 'Georgia', 'Comic Sans MS'
-    ]
+    def _make_setter(key: str, setter: object | None, mode: Literal["call", "attr", "dict"])\
+                    -> Callable[[T], None] | None:
+        """Converteix qualsevol setter admés en un callable uniforme.
 
-    @staticmethod
-    def scale():
-        return {'Normal': 'linear', 'Logarítmica': 'log', 'SymLog': 'symlog', 'LogIt': 'logit'}
+        Parameters
+        ----------
+        key: str
+            Clau del diccionari o l'atribut de classe, si escau
+        setter: object | None
+            Objecte que controla la crida.
+        mode: Literal["call", "attr", "dict"])
+            Classe d'operació que segueix el setter segons el seu tipus
 
-    @staticmethod
-    def format():
-        return {'Normal': 'normal', 'Negreta': 'bold'}
+        Returns
+        -------
+        func -> Callable[[T], None] | None
+            Funció final que s'assigna al callback. Si no hi ha setter, es retorna None.
 
-    @staticmethod
-    def text_style():
-        return {'Normal': 'normal', 'Cursiva': 'italic'}
+        Raises
+        ------
+        TypeError
+            Si el mode i el tipus d'objecte no coincideixen.
 
-    @staticmethod
-    def line_style():
-        return {'': 'None', '-': '-', '--': '--', '-.': '-.', '.': ':'}
+        """
+        if setter is None:
+            return None
 
-    @staticmethod
-    def marker_style():
-        return {
-            'Cap': 'None', 'Cercle': 'o', 'Quadrat': 's', 'Diamant': 'D', 'Creu': 'x', 
-            'Creu petita': '+', 'Estrella': '*', 'Triangle amunt': '^', 'Triangle avall': 'v', 
-            'Triangle esquerra': '<', 'Triangle dreta': '>', 'Punt': '.', 'Pixel': ','
-        }
+        match mode:
+            case "call":
+                if not callable(setter):
+                    msg = "El setter ha de ser callable en mode 'call'."
+                    raise TypeError(msg)
 
-def add_entry(func, frame, set_value=None, width = 18, **kwargs):
-    entry = Entry(frame, textvariable=set_value, font=('Helvetica', 9), width = width, **kwargs)
-    entry.bind('<Return>', func)
-    return entry
+                return cast("Callable[[T], None]", setter)
 
-def add_button(func, frame, set_value=None, **kwargs):
-    return Button(frame, textvariable=set_value, command=func, font=('Helvetica', 9, 'bold'), background = '#3a7ff6', fg = 'white', **kwargs)
+            case "attr":
+                target = setter
 
-def add_checkbutton(func, frame, set_value=None, text="", **kwargs):
-    return Checkbutton(frame, text=text, variable=set_value, command=func,
-        bg='#2b2b2b', fg='white', selectcolor='#444444', activebackground='#2b2b2b',
-        activeforeground='white', anchor='w', **kwargs)
+                def set_attr(value: T) -> None:
+                    setattr(target, key, value)
 
-def add_radiobuttons(func, frame, set_value=None, direction = 'v', options=None):
-    container = Frame(frame)
-    if not isinstance(options, dict):
-        options = dict(zip(options, options))
+                return set_attr
 
-    for i, (text, value) in enumerate(options.items()):
-        match direction:
-            case 'v': row, column = i, 0
-            case 'h': row, column = 0, i
-            case _: raise ValueError(f"Error en la direcció: {direction}")
+            case "dict":
+                if not isinstance(setter, dict):
+                    msg = "El setter ha de ser un mapping en mode 'dict'."
+                    raise TypeError(msg)
 
-        rb = Radiobutton(container, text=text, variable=set_value, value=value, command=func, bg='#2b2b2b',
-            fg='white', selectcolor='#444444', activebackground='#2b2b2b', activeforeground='white', anchor='w')
-        rb.grid(row=row, column=column, sticky='w')
+                mapping = cast("dict[str, T]", setter)
 
-    container.options = options
+                def set_dict(value: T) -> None:
+                    mapping[key] = value
 
-    return container
+                return set_dict
 
-def add_scale(func, frame, set_value= None, orient: Literal["horizontal", "vertical"] = "horizontal", **kwargs):
-    return Scale(frame, command=func, variable=set_value, orient = orient, **kwargs)
 
-def add_combobox(func, frame, set_value=None, options=None, width = 18):
-    def internal_callback(event=None):
-        set_value.set(combo.options[display_var.get()])
-        func(event)
+# ============================================================
+# Ginys de tkinter
+# ============================================================
 
-    if not isinstance(options, dict): options = dict(zip(options, options))
 
+class ButtonOptions(TypedDict):
+    """Paràmetres amb clau que es permeten modificar d'un ttk.Button."""
+
+    width: NotRequired[int]
+
+
+def _add_button(
+    func: partial[None],
+    frame: ttk.Frame,
+    set_value: tk.Variable,
+    **kwargs: Unpack[ButtonOptions],
+    ) -> ttk.Button:
+
+    widget_options: ButtonOptions = {"width": 10, **kwargs}
+    return ttk.Button(frame, textvariable=set_value, command=func, style="Custom.TButton", **widget_options)
+
+
+def _add_checkbutton(func: partial[None], frame: ttk.Frame, set_value: tk.Variable) -> ttk.Checkbutton:
+    return ttk.Checkbutton(frame, variable=set_value, command=func, style="Custom.TCheckbutton")
+
+
+class ComboboxOptions(TypedDict):
+    """Paràmetres amb clau que es permeten modificar d'un ttk.Combobox."""
+
+    width: NotRequired[int]
+
+
+def _add_combobox[T](
+    func: partial[None],
+    frame: ttk.Frame,
+    set_value: tk.StringVar,
+    options: dict[str, T],
+    **kwargs: Unpack[ComboboxOptions],
+) -> ttk.Combobox:
+
+    widget_options: ComboboxOptions = {"width": 12, **kwargs}
     labels = list(options.keys())
+    initial_key = next((k for k, v in options.items() if v == set_value.get()), labels[0]) if labels else ""
 
-    if labels: initial_key = next((k for k, v in options.items() if v == set_value.get()), labels[0])
-    else: initial_key = ''
+    display_var = tk.StringVar(frame, value=initial_key)
+    combo = ttk.Combobox(frame, values=labels, state="readonly", textvariable=display_var, **widget_options)
 
-    display_var = StringVar(frame, value=initial_key)
-    combo = Combobox(frame, values=labels, state="readonly", textvariable=display_var, font=('Helvetica', 9), width = width)
-
-    combo.options = options
-    combo.bind("<<ComboboxSelected>>", internal_callback)
+    combo.bind("<<ComboboxSelected>>", lambda _: func(display_var.get()))
 
     return combo
 
-def add_colorcombobox(func, frame, set_value=None, colors=None, cols=8):
-    if colors is None: colors = Default.colors()
 
-    def open_palette():
-        popup = Toplevel(frame)
-        popup.wm_overrideredirect(True)  # sense decoració finestra
+def _add_colorcombobox(func: partial[None], frame: ttk.Frame, set_value: tk.StringVar) -> ttk.Button:
+    value = mcolors.to_hex(set_value.get())
+
+    style = ttk.Style()
+    style_name = f"Color{id(frame)}.TButton"
+
+    style.configure(style_name, background=value, borderwidth=1)
+    style.map(style_name, background=[("active", value), ("pressed", value)])
+
+    def open_palette() -> None:
+        popup = tk.Toplevel(frame)
+        popup.wm_overrideredirect(boolean=True)
 
         x = main_btn.winfo_rootx()
         y = main_btn.winfo_rooty() + main_btn.winfo_height()
         popup.geometry(f"+{x}+{y}")
 
-        def select_color(color):
-            main_btn.value.set(color)
-            main_btn.config(bg=color)
+        def select_color(color: str) -> None:
+            set_value.set(color)
+
+            style.configure(style_name, background=color)
+            style.map(style_name, background=[("active", color), ("pressed", color)])
+
             popup.destroy()
+            func()
 
-            func(color)
+        cols = 8
 
-        # Graella de colors
-        for i, c in enumerate(colors):
-            r = i // cols
+        for i, color in enumerate(PLOT_COLORS):
+            row = i // cols
             col = i % cols
 
-            btn = Button(popup, bg=c, width=2, height=1, command=lambda col=c: select_color(col))
-            btn.grid(row=r, column=col, padx=1, pady=1)
+            btn = tk.Button(popup, bg=color, width=2, height=1, command=partial(select_color, color=color))
+            btn.grid(row=row, column=col, padx=1, pady=1)
 
-        # Tancar si perds focus
-        popup.bind("<FocusOut>", lambda e: popup.destroy())
+        popup.bind("<FocusOut>", lambda _: popup.destroy())
         popup.focus_set()
 
-    try:
-        value = mcolors.to_hex(set_value.get())
-    except Exception:
-        value = colors[0]
-
-    main_btn = Button(frame, bg=value, width=4, relief="raised", command = open_palette)
-    main_btn.value = set_value
+    main_btn = ttk.Button(frame, width=4, style=style_name, command=open_palette)
 
     return main_btn
 
-WIDGET_MAP = {'cb': add_combobox,
-              'entry': add_entry,
-              'scale': add_scale,
-              'button': add_button,
-              'radiobutton': add_radiobuttons,
-              'checkbutton': add_checkbutton,
-              'colorcb': add_colorcombobox}
 
-def create_tab(notebook, name):
-    tab = Frame(notebook)
-    notebook.add(tab, text=name)
-    return tab
+class EntryOptions(TypedDict, total=False):
+    """Paràmetres amb clau que es permeten modificar d'un ttk.Entry."""
+
+    width: int
+    justify: Literal["left", "right", "center"]
+    state: Literal["normal", "disabled", "readonly"]
+
+
+def _add_entry(
+    func: partial[None],
+    frame: ttk.Frame,
+    set_value: tk.Variable,
+    **kwargs: Unpack[EntryOptions],
+) -> ttk.Entry:
+    widget_options: EntryOptions = {"width": 18, **kwargs}
+
+    entry = ttk.Entry(frame, textvariable=set_value, **widget_options)
+    entry.bind("<Return>", lambda _: func())
+    return entry
+
+
+class RadioOptions(TypedDict):
+    """Paràmetres amb clau que es permeten modificar d'un ttk.Radiobutton."""
+
+    direction: NotRequired[Literal["h", "v"]]
+
+
+def _add_radiobuttons[T](
+    func: partial[None],
+    frame: ttk.Frame,
+    set_value: tk.Variable,
+    options: dict[str, T],
+    **kwargs: Unpack[RadioOptions],
+) -> ttk.Frame:
+    container = ttk.Frame(frame)
+
+    widget_options: RadioOptions = {"direction": "v", **kwargs}
+    direction = widget_options.pop("direction")
+
+    for i, (text, value) in enumerate(options.items()):
+        match direction:
+            case "v":
+                row, column = i, 0
+            case "h":
+                row, column = 0, i
+
+        rb = ttk.Radiobutton(
+            container,
+            text=text,
+            variable=set_value,
+            value=value,
+            command=func,
+            style="Custom.TRadiobutton",
+        )
+        rb.grid(row=row, column=column, sticky="w")
+
+    return container
+
+
+class ScaleOptions(TypedDict, total=False):
+    """Paràmetres amb clau que es permeten modificar d'un tk.Scale."""
+
+    state: Literal["normal", "active", "disabled"]
+    orient: Literal["horizontal", "vertical"]
+    from_: float
+    to: float
+    resolution: float
+
+
+def _add_scale(func: partial[None], frame: ttk.Frame, set_value: tk.IntVar | tk.DoubleVar,
+               **kwargs: Unpack[ScaleOptions]) -> tk.Scale:
+
+    widget_options: ScaleOptions = {
+        "state": "normal",
+        "orient": "horizontal",
+        "from_": 0,
+        "to": 100,
+        "resolution": 1,
+        **kwargs}
+
+    return tk.Scale(frame, command=func, variable=set_value, **widget_options)
+
+
+# ============================================================
+# Barra de progrés
+# ============================================================
+
 
 class Progress:
-    def __init__(self, root, title="Processant", maximum=100):
-        self.root = root
-        self.value = 0
-        self.maximum = maximum
-        self.last_percent = -1
+    """Classe que crea una barra de progrés en una finestra flotant per a un procés executat i iteratiu."""
 
-        self.cancel_event = threading.Event()
+    def __init__(self, root: tk.Toplevel | tk.Tk, title: str = "Processant", maximum: float = 100) -> None:
+        """Crea la finestra que conté la barra de progrés i inicialitza els paràmetres.
 
-        self.win = Toplevel(root)
-        self.win.title(title)
-        self.win.resizable(False, False)
-        self.win.transient(self.root)
-        self.win.lift()
-        self.win.geometry("400x120")
+        Parameters
+        ----------
+        root: tk.Toplevel | tk.Tk
+            Objecte al que se subordina la classe
+        title: str = "Processant"
+            Títol de la finestra
+        maximum: float = 100
+            Percentatge màxim de la barra progrés
 
-        self.label = Label(self.win, text="Preparant...", font=("Arial", 12))
-        self.label.pack(pady=10)
+        """
+        self._root: tk.Toplevel | tk.Tk = root
+        self._value: int = 0
+        self._maximum: float = maximum
+        self._last_percent: int = 0
 
-        frame_barra = Frame(self.win)
+        self._cancel_event: threading.Event = threading.Event()
+
+        self._win: tk.Toplevel = tk.Toplevel(root)
+        self._win.title(title)
+        self._win.resizable(width=False, height=False)
+        self._win.transient(self._root)
+        self._win.lift()
+        self._win.geometry("400x120")
+
+        self._label: ttk.Label = ttk.Label(self._win, text="Preparant...", font=("Arial", 12))
+        self._label.pack(pady=10)
+
+        frame_barra: ttk.Frame = ttk.Frame(self._win)
         frame_barra.pack(fill="x", padx=20, pady=10)
 
-        self.bar = Progressbar(frame_barra, style="Green.Horizontal.TProgressbar", mode="determinate")
-        self.bar.pack(side="left", fill="x", expand=True)
+        self._bar: ttk.Progressbar = ttk.Progressbar(frame_barra,
+                                     style="Green.Horizontal.TProgressbar", mode="determinate")
+        self._bar.pack(side="left", fill="x", expand=True)
 
-        self.percent_label = Label(frame_barra, text="0 %", width=5)
-        self.percent_label.pack(side="right", padx=(10, 0))
+        self._percent_label: ttk.Label = ttk.Label(frame_barra, text="0 %", width=5)
+        self._percent_label.pack(side="right", padx=(10, 0))
 
-        self.cancel_button = Button(self.win, text="Cancel·lar", command=self.cancel)
-        self.cancel_button.pack(anchor="e", padx=20, pady=5)
+        self._cancel_button: ttk.Button = ttk.Button(self._win, text="Cancel·lar", command=self.cancel)
+        self._cancel_button.pack(anchor="e", padx=20, pady=5)
 
-        self.bar["maximum"] = maximum
+        self._bar["maximum"] = maximum
 
-        self.win.protocol("WM_DELETE_WINDOW", self.cancel)
+        self._win.protocol("WM_DELETE_WINDOW", self.cancel)
 
-    def update(self, value=None, text=None):
-        if value is not None:
-            self.value = value
+    def update(self) -> None:
+        """Actualitza la barra de progrés cada 5% obtingut."""
+        percent = int((self._value / self._maximum) * 100)
 
-        percent = int((self.value / self.maximum) * 100)
-
-        # Només actualitzar la GUI cada 5 %
         percent = min(percent, 100)
         reported_percent = (percent // 5) * 5
 
-        if reported_percent == self.last_percent:
+        if reported_percent == self._last_percent:
             return
 
-        self.last_percent = reported_percent
+        self._last_percent = reported_percent
 
-        def _update():
-            if not self.win.winfo_exists():
+        def _update() -> None:
+            if not self._win.winfo_exists():
                 return
 
-            self.bar["value"] = self.value
-            self.percent_label.config(text=f"{reported_percent} %")
+            self._bar["value"] = self._value
+            self._percent_label.config(text=f"{reported_percent} %")
+            self._label.config(text=f"Calculant: {self._value}/{self._maximum}")
 
-            if text is not None:
-                self.label.config(text=text)
+        self._root.after(0, _update)
 
-        self.root.after(0, _update)
+    def increment(self) -> None:
+        """Indica que s'avança a la iteració següent."""
+        self._value += 1
+        self.update()
 
-    def increment(self, text=None):
-        self.value += 1
-        self.update(text=text)
+    def cancel(self) -> None:
+        """Cancel·la el procés complet."""
+        self._cancel_event.set()
 
-    def cancel(self):
-        self.cancel_event.set()
+        self._label.config(text="Cancel·lant...")
+        self._cancel_button.config(state="disabled")
 
-        self.label.config(text="Cancel·lant...")
-        self.cancel_button.config(state="disabled")
+    def cancelled(self) -> bool:
+        """Indica que el procés s'ha cancel·lat.
 
-    def cancelled(self):
-        return self.cancel_event.is_set()
+        Returns
+        -------
+        cancel: bool
+            True si està cancel·lat, False si continua
 
-    def finish(self, text="Finalitzat ✔"):
-        def _finish():
-            if not self.win.winfo_exists():
+        """
+        return self._cancel_event.is_set()
+
+    def finish(self, text: str = "Finalitzat ✔") -> None:
+        """Indica que el procés s'ha completament exitosament.
+
+        Parameters
+        ----------
+        text: str = "Finalitzat ✔"
+            Text mostrat en finalitzar.
+
+        """
+        def _finish() -> None:
+            if not self._win.winfo_exists():
                 return
 
-            self.label.config(text=text)
-            self.cancel_button.config(state="disabled")
-            self.win.after(500, self.win.destroy)
+            self._label.config(text=text)
+            self._cancel_button.config(state="disabled")
+            self._win.after(500, self._win.destroy)
 
-        self.root.after(0, _finish)
+        self._root.after(0, _finish)

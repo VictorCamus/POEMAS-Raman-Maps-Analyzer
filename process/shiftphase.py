@@ -1,12 +1,41 @@
-import numpy as np
+"""Funcions que calculen desplaçaments entre matrius de dades que representen la mateixa mesura."""
+
 from tkinter import Toplevel
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from typing import TYPE_CHECKING
+
+import numpy as np
 from scipy.ndimage import gaussian_filter
 from scipy.signal import fftconvolve
 
-from drawing.plots import base_plot
+from drawing.plots import base_plot, create_canvas
 
-def cross_correlation_shift(img1, img2, sigma_hp=20, use_window=True, plot=False):
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
+
+
+def cross_correlation_shift(img1: NDArray[np.float32], img2: NDArray[np.float32], sigma_hp: float | None = 20,
+                            *, use_window: bool = False, plot: bool = False) -> tuple[int, int]:
+    """Corregeix el desplaçament horitzontal fila a fila.
+
+    Parameters
+    ----------
+    img1: NDArray[np.float32]
+        Matriu de dades de referència.
+    img2: NDArray[np.float32]
+        Matriu de dades problema.
+    sigma_hp: float | None = 20
+        Pes del filtre gaussià
+    use_window: bool = False
+        Indica si es fa hanning.
+    plot: bool = False
+        Indica si es vol graficar la matriu de correlació que determina el desplaçament òptim
+
+    Returns
+    -------
+    dx, dy: tuple[int, int]
+        Desplaçament de les imatges en píxels
+
+    """
     f1 = img1.astype(float).copy()
     f2 = img2.astype(float).copy()
 
@@ -16,7 +45,7 @@ def cross_correlation_shift(img1, img2, sigma_hp=20, use_window=True, plot=False
         f2 -= gaussian_filter(f2, sigma_hp)
 
     # ---- WINDOWING (només si mateixa mida) ----
-    same_size = (f1.shape == f2.shape)
+    same_size = f1.shape == f2.shape
 
     if use_window and same_size:
         wy = np.hanning(f1.shape[0])
@@ -26,14 +55,14 @@ def cross_correlation_shift(img1, img2, sigma_hp=20, use_window=True, plot=False
         f2 *= window
 
     # ---- CORRELACIÓ DE FASE O FFT CONVOLUCIÓ ---- ¡
-    if same_size: # CAS 1 — mateixa mida → correlació de fase (ràpida i neta)
-        F1 = np.fft.fft2(f1)
-        F2 = np.fft.fft2(f2)
+    if same_size:  # CAS 1 — mateixa mida → correlació de fase (ràpida i neta)
+        f1 = np.fft.fft2(f1)
+        f2 = np.fft.fft2(f2)
 
-        R = F1 * np.conj(F2)
-        R /= np.abs(R) + 1e-12
+        r = f1 * np.conj(f2)
+        r /= np.abs(r) + 1e-12
 
-        corr = np.fft.ifft2(R)
+        corr = np.fft.ifft2(r)
         corr = np.abs(corr)
 
         max_pos = np.unravel_index(np.argmax(corr), corr.shape)
@@ -46,26 +75,48 @@ def cross_correlation_shift(img1, img2, sigma_hp=20, use_window=True, plot=False
 
     else:
         # CAS 2 — mides diferents → FFT convolució (més lenta i sorollosa però funciona)
-        corr = fftconvolve(f1, f2[::-1, ::-1], mode='full')
+        corr = fftconvolve(f1, f2[::-1, ::-1], mode="full")
 
         max_pos = np.unravel_index(np.argmax(corr), corr.shape)
         dy = max_pos[0] - (f2.shape[0] - 1)
         dx = max_pos[1] - (f2.shape[1] - 1)
 
     if plot:
-        fig, ax = base_plot(dim=(4,4))
-        ax.imshow(corr, cmap='viridis')
+        fig, ax = base_plot(dim=(4, 4))
+        ax.imshow(corr, cmap="viridis")
 
         win = Toplevel()
         win.title("Correlació de fase")
 
-        canvas = FigureCanvasTkAgg(fig, master=win)
+        canvas = create_canvas(fig, frame=win)
         canvas.draw()
         canvas.get_tk_widget().pack(fill="both", expand=True)
 
     return int(dx), int(dy)
 
-def line_by_line_drift_correction(img, max_shift=20): # Corregeix drift horitzontal fila a fila. Retorna imatge corregida + shifts per fila.
+
+MAX_R1 = 10
+
+
+def line_by_line_drift_correction(img: NDArray[np.float32], max_shift: int = 20)\
+                                  -> tuple[NDArray[np.float32], NDArray[np.intp]]:
+    """Corregeix el desplaçament horitzontal fila a fila.
+
+    Parameters
+    ----------
+    img: NDArray[np.float32]
+        Matriu de dades que es corregeix.
+    max_shift: int = 20
+        Màxim desplaçament permés
+
+    Returns
+    -------
+    corrected: NDArray[np.float32]
+        Imatge corregida
+    shifts: NDArray[np.float32]
+        Desplaçaments de cada línia
+
+    """
     h, w = img.shape
     corrected = np.full_like(img, np.nan)
     shifts = np.zeros(h, dtype=int)
@@ -74,14 +125,12 @@ def line_by_line_drift_correction(img, max_shift=20): # Corregeix drift horitzon
     corrected[0] = ref_row
 
     for y in range(1, h):
-
         row = img[y].astype(float)
 
         best_shift = 0
         best_score = -np.inf
 
         for dx in range(-max_shift, max_shift + 1):
-
             if dx < 0:
                 r1 = ref_row[:dx]
                 r2 = row[-dx:]
@@ -92,7 +141,7 @@ def line_by_line_drift_correction(img, max_shift=20): # Corregeix drift horitzon
                 r1 = ref_row
                 r2 = row
 
-            if len(r1) < 10:
+            if len(r1) < MAX_R1:
                 continue
 
             score = np.sum((r1 - r1.mean()) * (r2 - r2.mean()))
