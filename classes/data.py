@@ -13,12 +13,18 @@ from classes.protocols import ColorBool, SpecUnits  # ruff: ignore[typing-only-f
 from drawing.colormap import cmaps
 from process.basics import find_nearest, set_lims
 from process.converter import coords_to_pixel
-from process.mathfuncs import DEFAULT_FUNCS, DEFAULT_PARAMS, DefaultFunction
+from process.mathfuncs import DEFAULT_FUNCS, DEFAULT_PARAMS, DefaultFunction, DefaultParameter
 
 if TYPE_CHECKING:
     from typing import Literal
 
-    from process.mathfuncs import DefaultParameter
+    type IntSlice = slice[
+        int,
+        int,
+        int | None,
+    ]
+else:
+    IntSlice = slice
 
 
 @dataclass
@@ -203,7 +209,7 @@ class FitData:
     name: str
     units: SpecUnits
     r2: NDArray[np.float32]
-    xrange: slice[int, int, int]
+    xrange: IntSlice
     config: dict[str, PeakDataConfig]
     bkgdata: NDArray[np.uint16 | np.uint32] | None = None
     peaks: dict[str, PeakData] = field(default_factory=dict)
@@ -262,7 +268,7 @@ class PeakData:
         """
         params = {name: par[coords] for name, par in self.params.items()}
 
-        return self.func.evaluate(xdata, **params)
+        return self.func.evaluate(xdata, params)
 
     @property
     def parameter_names(self) -> list[str]:

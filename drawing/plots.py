@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 from matplotlib import ticker
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.colors import TABLEAU_COLORS
 from matplotlib.figure import Figure
 
 if TYPE_CHECKING:
@@ -17,22 +18,22 @@ if TYPE_CHECKING:
 
 
 PLOT_COLORS: list[str] = [
-            "black",
+            "red",
             "blue",
             "green",
-            "red",
+            "orange",
+            "yellow",
             "cyan",
             "magenta",
-            "yellow",
+            "black",
             "white",
-            "orange",
             "purple",
             "lime",
             "turquoise",
             "navy",
         ]
 
-PROFILE_COLORS: list[str] = ["r", "b", "g", "orange", "y", "cyan", "pink", "k"]
+PEAK_COLORS = cast("list[str]", list(TABLEAU_COLORS.values())[1:])
 
 
 def base_plot(xtitle: str = "", ytitle: str = "", dim: tuple[float, float] = (6, 4),

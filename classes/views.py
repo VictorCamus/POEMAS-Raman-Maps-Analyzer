@@ -11,7 +11,7 @@ import numpy as np
 from classes.interactions import MapInteraction
 from drawing import mapdraw
 from drawing.arrows import FletxaBase
-from drawing.plots import base_plot, create_canvas, get_verts
+from drawing.plots import PEAK_COLORS, base_plot, create_canvas, get_verts
 from process import images as zoom
 from process.basics import find_nearest
 from process.converter import pixel_to_coords
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from matplotlib.figure import Figure
     from matplotlib.image import AxesImage
     from matplotlib.lines import Line2D
-    from matplotlib.text import Annotation, Text
+    from matplotlib.text import Text
     from numpy.typing import NDArray
 
     from classes.data import ChannelData, FileData, GeometryData, ObjectData, PeakData, ProfileData, SpecData
@@ -396,15 +396,30 @@ class SpecView(FigureView):
         self.fit_line, = self.axis.plot([], [], color="k")
         self.fit_peaks = {}
 
+        top_lim = float(1.1 * np.max(spec.y[spec.xrange]))
         self.axis.set_title(f"X={spec.coords[1] + 1} Y={spec.coords[0] + 1}", fontsize=20, pad=10, fontname="Consolas")
         self.axis.set_xlim(*spec.lims)
-        self.axis.set_ylim(bottom=0)
+        self.axis.set_ylim(bottom=0, top=top_lim)
 
+        self.header.widgets["top"].set(top_lim)
         self.header.fit = "rawdata"
 
     def _connect(self) -> None:
         self.canvas.mpl_connect("key_press_event", lambda e: zoom.copy_figure(self.figure)
                                 if e.key == "ctrl+c" else None)
+
+    def clean_peaks(self) -> None:
+        """Buida els objectes visuals dels pics."""
+        while self.fit_peaks:
+            _, peak_plot = self.fit_peaks.popitem()
+            peak_plot.remove()
+
+        self.fit_line.set_data([], [])
+
+    def create_peaks(self) -> None:
+        """Crea el diccionari amb els objectes predeterminats dels pics."""
+        self.fit_peaks = {name: PeakView(self.axis, color)
+            for name, color in zip(self.header.fit.peaks.keys(), PEAK_COLORS, strict=False)}
 
     def plot_pixel(self, px: int, py: int) -> None:
         """Mostra l'espectre del píxel corresponent.
@@ -462,10 +477,13 @@ class SpecView(FigureView):
 
             yfit: NDArray[np.float32] = np.zeros_like(xfit)
 
-            for peak, peak_plot in zip(fit.peaks.values(), self.fit_peaks.values(), strict=False):
+            for peak, peak_plot in zip(fit.peaks.values(), self.fit_peaks.values(), strict=True):
                 if not peak.func.is_bkg:
                     ypeak = peak.ydata(xfit, spec.coords)
                     yfit += ypeak
+
+                    if not spec.bkg_active:
+                        bkg = np.zeros_like(bkg)
 
                     peak_plot.update(
                         verts=get_verts(xfit, ypeak, bkg),
@@ -502,7 +520,16 @@ class PeakView:
 
         """
         self.plot: FillBetweenPolyCollection = axis.fill_between([], [], color=color, alpha=0.6)
-        self.label: Annotation = axis.annotate("", (0, 0))
+        self.label: Text = axis.text(0, 0, "",
+            fontweight="bold",
+            fontsize=16,
+            fontname="Consolas",
+            horizontalalignment="center")
+
+    def clear(self) -> None:
+        """Buida els objectes visuals del pic."""
+        self.plot.set_verts([])
+        self.label.set_text("")
 
     def remove(self) -> None:
         """Elimina els objectes visuals del pic."""
@@ -525,7 +552,7 @@ class PeakView:
         self.plot.set_verts([verts])
 
         self.update_text(label_text, label_coords[0])
-        self.label.xy = label_coords
+        self.label.set_position(label_coords)
 
     def update_text(self, name: str, value: float) -> None:
         """Actualitza el text de l'etiqueta del pic.

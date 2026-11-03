@@ -109,7 +109,7 @@ def load(filepath: Path) -> FileDataDict:
 
     z = np.nansum(spectra, axis=2, dtype=float)
 
-    channels["Spectra"] = ChannelData(name="SpecData", data=z, units="cts",
+    channels["SpecData"] = ChannelData(name="SpecData", data=z, units="cts",
                           spectra=SpecData(xdata=xdata, raw_ydata=spectra, units=xunits, laser=laser))
 
     return {"channel": channels, "geometry": GeometryData(dim=dim, base_size=mida), "objects": ObjectData()}

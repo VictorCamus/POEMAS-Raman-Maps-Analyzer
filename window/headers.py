@@ -470,6 +470,9 @@ class HeaderSpec(Header["SpecView"], SpecMixin):
 
         self.view.axis.set_xlim(*spec.lims)
 
+        self.view.clean_peaks()
+        self.view.create_peaks()
+
     def _select_rawdata(self) -> None:
         self.widgets["units"].config(state="readonly")
         self.widgets["peak"].config(state="disabled")
@@ -483,6 +486,7 @@ class HeaderSpec(Header["SpecView"], SpecMixin):
             label.config(text=f"{self.channel.name} ({self.channel.units})")
 
         self._update_map(self.channel)
+        self.view.clean_peaks()
 
     def _select_peak(self) -> None:
         self.widgets["parameter"].config(state="readonly")

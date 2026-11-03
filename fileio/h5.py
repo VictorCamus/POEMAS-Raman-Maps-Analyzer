@@ -16,6 +16,12 @@ if TYPE_CHECKING:
     from classes.protocols import FileDataDict
     from classes.views import FileView
 
+    type IntSlice = slice[
+        int,
+        int,
+        int | None,
+    ]
+
 MAP_OLD_TYPES: dict[str, str] = {"Z": "data",
                                 "N": "dim",
                                 "A": "amp",
@@ -527,7 +533,7 @@ def save_value(group: h5py.Group, name: str, value: object) -> None:
     elif isinstance(value, tuple):
         save_tuple(group, name, value)
     elif isinstance(value, slice):
-        save_slice(group, name, value)
+        save_slice(group, name, cast("IntSlice", value))
     else:
         group.attrs[name] = value
 
@@ -569,7 +575,7 @@ def save_tuple(group: h5py.Group, name: str, value: tuple[object, ...]) -> None:
     tuple_group.attrs["values"] = value
 
 
-def save_slice(group: h5py.Group, name: str, value: slice[object, object, object]) -> None:
+def save_slice(group: h5py.Group, name: str, value: IntSlice) -> None:
     """Guarda un slice com a atributs d'un grup H5.
 
     Parameters
@@ -583,12 +589,8 @@ def save_slice(group: h5py.Group, name: str, value: slice[object, object, object
 
     """
     slice_group = group.create_group(name)
-
-    if value.start is not None:
-        slice_group.attrs["start"] = value.start
-
-    if value.stop is not None:
-        slice_group.attrs["stop"] = value.stop
+    slice_group.attrs["start"] = value.start
+    slice_group.attrs["stop"] = value.stop
 
     if value.step is not None:
         slice_group.attrs["step"] = value.step

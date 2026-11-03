@@ -10,11 +10,10 @@ from typing import TYPE_CHECKING, Literal, TypedDict, cast
 
 import numpy as np
 from lmfit import Parameters, minimize
-from matplotlib.colors import TABLEAU_COLORS
 
 from classes.data import FitData, PeakData, PeakDataConfig
 from classes.views import PeakView
-from drawing.plots import get_verts
+from drawing.plots import PEAK_COLORS, get_verts
 from process.basics import find_nearest
 from process.mathfuncs import DEFAULT_FUNCS, linear_combination
 from process.statistics import get_r2
@@ -30,9 +29,6 @@ if TYPE_CHECKING:
     from process.mathfuncs import DefaultParameter
 
 
-COLORS = cast("list[str]", list(TABLEAU_COLORS.values()))
-
-
 type FitSpecKey = Literal["name", "add", "fit", "r2", "remove", "fit_map"]
 
 
@@ -42,7 +38,7 @@ class FitSpecWidgets(TypedDict):
     name: Widget[str]
     add: Widget[str]
     fit: Widget[str]
-    r2: Widget[float]
+    r2: Widget[str]
     remove: Widget[str]
     fit_map: Widget[str]
 
@@ -392,7 +388,7 @@ class FitSpec(BaseWindow):
             ),
             "r2": Widget(
                 key="r2",
-                var_type=float,
+                var_type=str,
                 text="R²",
                 widget="entry",
                 widget_kwargs={"state": "readonly", "width": 10},
@@ -416,7 +412,7 @@ class FitSpec(BaseWindow):
     def close_window(self) -> None:
         """Elimina els objectes relacionats amb l'ajust del gràfic d'espectres."""
         for peak_plot in self.specview.fit_peaks.values():
-            peak_plot.remove()
+            peak_plot.clear()
 
         self.specview.fit_line.set_data([], [])
 
@@ -454,7 +450,7 @@ class FitSpec(BaseWindow):
         self.peaks[config.ref] = peak
 
         if new:
-            self.specview.fit_peaks[config.ref] = PeakView(self.specview.axis, color=COLORS[i])
+            self.specview.fit_peaks[config.ref] = PeakView(self.specview.axis, color=PEAK_COLORS[i])
             self.set_peak_plot(peak)
             self.update_fit()
 
@@ -546,7 +542,7 @@ class FitSpec(BaseWindow):
                 peak_plot = self.specview.fit_peaks.pop(ref)
                 peak_plot.remove()
             else:
-                self.specview.fit_peaks[ref] = PeakView(self.specview.axis, color=COLORS[len(self.peaks)])
+                self.specview.fit_peaks[ref] = PeakView(self.specview.axis, color=PEAK_COLORS[len(self.peaks)])
 
         self.refresh_plot()
 
@@ -612,7 +608,7 @@ class FitSpec(BaseWindow):
                 par.value = round(params[f"{ref}_{par_name}"].value, 3)
                 peak.par_widgets[par_name]["value"].set(par.value)
 
-        self.widgets["r2"].set(round(r2, 4))
+        self.widgets["r2"].set(str(round(r2, 4)))
         self.refresh_plot()
 
     def fit_map(self) -> None:
@@ -844,6 +840,7 @@ class FitSpec(BaseWindow):
 
         combofit.options[name] = name
         combofit.config(values=list(combofit.options.keys()))
+        combofit.set(name)
 
         self.specview.header.fit = name
         progress.finish()

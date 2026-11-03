@@ -69,7 +69,7 @@ def clear_selector(combo: Widget[str]) -> None:
     """
     combo.config(values=[])
     combo.options = {}
-    combo.set(value="")
+    combo.set(value=None)
 
 
 def check_widgets[TWidgets](widgets: GenericWidgets, dict_typed: TypeForm[TWidgets]) -> TWidgets:
@@ -312,6 +312,8 @@ class SpecWidgets(TypedDict):
 class SpecMixin:
     """Classe que conté les operacions principals dels ginys fit, peak i parameter de l'espectre corresponent."""
 
+    include_rawdata: bool = False
+    include_r2: bool = False
     widgets: GenericWidgets
 
     def __init__(self, spectra: SpecData) -> None:
@@ -337,9 +339,6 @@ class SpecMixin:
         self.fit_key: str = "rawdata"
         self.peak_key: str | None = None
         self.parameter_key: str | None = None
-
-        self.include_rawdata: bool = False
-        self.include_r2: bool = False
 
     @property
     def spec_widgets(self) -> SpecWidgets:
@@ -376,6 +375,10 @@ class SpecMixin:
             self._fit = None
             self._peak = None
             self._parameter = None
+
+            clear_selector(self.spec_widgets["parameter"])
+            clear_selector(self.spec_widgets["peak"])
+
             self._select_rawdata()
             return
 

@@ -190,6 +190,9 @@ class Widget[T: VarType]:
             key = next((key for key, val in self.options.items() if val == value), "")
             self.widget.set(key)
 
+            if not key:
+                return
+
         if self.callback is not None:
             self.callback(self.get())
 
@@ -537,73 +540,76 @@ class Progress:
             Percentatge màxim de la barra progrés
 
         """
-        self._root: tk.Toplevel | tk.Tk = root
-        self._value: int = 0
-        self._maximum: float = maximum
-        self._last_percent: int = 0
+        self.root: tk.Toplevel | tk.Tk = root
+        self.value: int = 0
+        self.maximum: float = maximum
+        self.last_percent: int = 0
 
-        self._cancel_event: threading.Event = threading.Event()
+        self.cancel_event: threading.Event = threading.Event()
 
-        self._win: tk.Toplevel = tk.Toplevel(root)
-        self._win.title(title)
-        self._win.resizable(width=False, height=False)
-        self._win.transient(self._root)
-        self._win.lift()
-        self._win.geometry("400x120")
+        self.window: tk.Toplevel = tk.Toplevel(root)
+        self.window.title(title)
+        self.window.resizable(width=False, height=False)
+        self.window.transient(self.root)
+        self.window.lift()
+        self.window.geometry("400x140")
 
-        self._label: ttk.Label = ttk.Label(self._win, text="Preparant...", font=("Arial", 12))
-        self._label.pack(pady=10)
+        main_frame = ttk.Frame(self.window)
+        main_frame.pack(fill="both", expand=True, padx=10, pady=10)
 
-        frame_barra: ttk.Frame = ttk.Frame(self._win)
+        self.label = ttk.Label(main_frame, text="Preparant...")
+        self.label.pack(pady=10)
+
+        frame_barra = ttk.Frame(main_frame)
         frame_barra.pack(fill="x", padx=20, pady=10)
 
-        self._bar: ttk.Progressbar = ttk.Progressbar(frame_barra,
+        self.bar = ttk.Progressbar(frame_barra,
                                      style="Green.Horizontal.TProgressbar", mode="determinate")
-        self._bar.pack(side="left", fill="x", expand=True)
+        self.bar.pack(side="left", fill="x", expand=True)
 
-        self._percent_label: ttk.Label = ttk.Label(frame_barra, text="0 %", width=5)
-        self._percent_label.pack(side="right", padx=(10, 0))
+        self.percent_label = ttk.Label(frame_barra, text="0 %", width=5)
+        self.percent_label.pack(side="right", padx=(10, 0))
 
-        self._cancel_button: ttk.Button = ttk.Button(self._win, text="Cancel·lar", command=self.cancel)
-        self._cancel_button.pack(anchor="e", padx=20, pady=5)
+        self.cancel_button = ttk.Button(main_frame, text="Cancel·lar", style="Custom.TButton", command=self.cancel)
+        self.cancel_button.pack(anchor="e", padx=20)
 
-        self._bar["maximum"] = maximum
+        self.bar["maximum"] = maximum
 
-        self._win.protocol("WM_DELETE_WINDOW", self.cancel)
+        self.window.protocol("WM_DELETE_WINDOW", self.cancel)
 
     def update(self) -> None:
         """Actualitza la barra de progrés cada 5% obtingut."""
-        percent = int((self._value / self._maximum) * 100)
+        percent = int((self.value / self.maximum) * 100)
 
         percent = min(percent, 100)
         reported_percent = (percent // 5) * 5
 
-        if reported_percent == self._last_percent:
+        if reported_percent == self.last_percent:
             return
 
-        self._last_percent = reported_percent
+        self.last_percent = reported_percent
 
         def _update() -> None:
-            if not self._win.winfo_exists():
+            if not self.window.winfo_exists():
                 return
 
-            self._bar["value"] = self._value
-            self._percent_label.config(text=f"{reported_percent} %")
-            self._label.config(text=f"Calculant: {self._value}/{self._maximum}")
+            self.bar["value"] = self.value
+            self.percent_label.config(text=f"{reported_percent} %")
+            self.label.config(text=f"Calculant: {self.value}/{self.maximum}")
 
-        self._root.after(0, _update)
+        self.root.after(0, _update)
 
     def increment(self) -> None:
         """Indica que s'avança a la iteració següent."""
-        self._value += 1
+        self.value += 1
         self.update()
 
     def cancel(self) -> None:
         """Cancel·la el procés complet."""
-        self._cancel_event.set()
+        self.cancel_event.set()
 
-        self._label.config(text="Cancel·lant...")
-        self._cancel_button.config(state="disabled")
+        self.label.config(text="Cancel·lant...")
+        self.cancel_button.config(state="disabled")
 
     def cancelled(self) -> bool:
         """Indica que el procés s'ha cancel·lat.
@@ -614,7 +620,7 @@ class Progress:
             True si està cancel·lat, False si continua
 
         """
-        return self._cancel_event.is_set()
+        return self.cancel_event.is_set()
 
     def finish(self, text: str = "Finalitzat ✔") -> None:
         """Indica que el procés s'ha completament exitosament.
@@ -626,11 +632,11 @@ class Progress:
 
         """
         def _finish() -> None:
-            if not self._win.winfo_exists():
+            if not self.window.winfo_exists():
                 return
 
-            self._label.config(text=text)
-            self._cancel_button.config(state="disabled")
-            self._win.after(500, self._win.destroy)
+            self.label.config(text=text)
+            self.cancel_button.config(state="disabled")
+            self.window.after(500, self.window.destroy)
 
-        self._root.after(0, _finish)
+        self.root.after(0, _finish)

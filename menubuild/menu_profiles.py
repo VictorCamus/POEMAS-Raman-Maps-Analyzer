@@ -8,7 +8,7 @@ import numpy as np
 
 from classes.data import ProfileData
 from drawing.arrows import FletxaInteractiva
-from drawing.plots import PROFILE_COLORS
+from drawing.plots import PLOT_COLORS
 from process.basics import get_line
 from process.converter import coords_to_pixel
 from window import FigureWindow
@@ -89,7 +89,7 @@ class GestorProfiles(BaseMenu):
             file.geometry.dim,
             file.geometry.base_size,
             str(num + 1),
-            color=PROFILE_COLORS[num % 8],
+            color=PLOT_COLORS[num % 8],
             on_fletxa_finalitzada=save_arrow,
         )
 
