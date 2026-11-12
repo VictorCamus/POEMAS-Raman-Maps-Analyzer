@@ -176,6 +176,8 @@ def _make_histogram(z: NDArray[np.float32], nbins: int, lims: tuple[float, float
         Valor de cada interval
 
     """
+    z = z[np.isfinite(z)]
+
     init_values, init_bins = np.histogram(z, range=lims, bins=nbins)
     values = np.array(init_values, dtype=np.float32)
     bins = np.array((init_bins[:-1] + init_bins[1:]) / 2, dtype=np.float32)

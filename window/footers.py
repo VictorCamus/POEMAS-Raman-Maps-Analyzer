@@ -127,7 +127,7 @@ class FooterSpec(Footer["SpecView"]):
             return
 
         self.widgets["track_x"].set(f"{event.xdata:.3f}")
-        self.widgets["track_y"].set(f"{event.ydata}")
+        self.widgets["track_y"].set(f"{event.ydata:.0f}")
 
     def _create_widgets(self) -> None:  # Afegeix controls per canviar el color del mapa i de l'escala.
         self.widgets = {

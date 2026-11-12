@@ -396,7 +396,7 @@ class SpecView(FigureView):
         self.fit_line, = self.axis.plot([], [], color="k")
         self.fit_peaks = {}
 
-        top_lim = float(1.1 * np.max(spec.y[spec.xrange]))
+        top_lim = int(1.1 * np.max(spec.y[spec.xrange]))
         self.axis.set_title(f"X={spec.coords[1] + 1} Y={spec.coords[0] + 1}", fontsize=20, pad=10, fontname="Consolas")
         self.axis.set_xlim(*spec.lims)
         self.axis.set_ylim(bottom=0, top=top_lim)

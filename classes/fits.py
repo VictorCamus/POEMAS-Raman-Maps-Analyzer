@@ -370,7 +370,7 @@ class FitSpec(BaseWindow):
                 init=name,
                 text="Nom:",
                 widget="entry",
-                widget_kwargs={"width": 10},
+                widget_kwargs={"width": 16},
             ),
             "add": Widget(
                 key="add",
@@ -391,7 +391,7 @@ class FitSpec(BaseWindow):
                 var_type=str,
                 text="R²",
                 widget="entry",
-                widget_kwargs={"state": "readonly", "width": 10},
+                widget_kwargs={"state": "readonly", "width": 16},
             ),
             "remove": Widget(
                 key="remove",

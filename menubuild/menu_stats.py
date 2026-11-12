@@ -90,7 +90,8 @@ class Histogrames(FigureWindow):
         self.color: str = "blue"
         self.nbins: int = 50
 
-        super().__init__(gestor, "Mostrar histogrames")
+        super().__init__(gestor, "Mostrar histogrames", dim=(5, 4))
+
         self.update_plot(remove=False)
 
         buttons = Frame(self.fig_frame)
@@ -105,12 +106,19 @@ class Histogrames(FigureWindow):
     @property
     def data(self) -> NDArray[np.float32]:
         """Retorna les dades contingudes entre els límits establerts."""
-        mask = (self.lims[0] < self._data) & (self._data < self.lims[1])
-        return self._data[mask]
+        region = self.file.geometry.region
+        mask = self.file.objects.mask[region]
+        data = self.channel.data[region][mask].ravel()
+        lims_mask = (self.lims[0] < data) & (data < self.lims[1])
+
+        return data[lims_mask]
 
     def _create_widgets(self) -> None:
         files = list(self.files.keys())
         channels = list(self.file.channel.keys())
+
+        self.lims = self.channel.lims.copy()
+
         mean, std, skew, kurt, lw, q1, q2, q3, tw = self.compute_stats()
 
         self.widgets = {
@@ -271,6 +279,8 @@ class Histogrames(FigureWindow):
 
         """
         self.file = file_key
+
+        self.default_lims()
         self.set_widgets()
 
     def set_channel(self, ch_key: str) -> None:
@@ -283,7 +293,15 @@ class Histogrames(FigureWindow):
 
         """
         self.channel = ch_key
+
+        self.default_lims()
         self.set_widgets()
+
+    def default_lims(self) -> None:
+        """Iguala els límits als predeterminats del canal actual."""
+        self.lims = self.channel.lims.copy()
+        self.widgets["inf"].set(round(self.lims[0], 3))
+        self.widgets["sup"].set(round(self.lims[1], 3))
 
     def set_lims(self, value: float, key: InfSup) -> None:
         """Canvia els límits de l'eix corresponent: eix X ("Hist") o eix Y ("Box").
@@ -302,6 +320,7 @@ class Histogrames(FigureWindow):
             case "sup":
                 self.lims[1] = value
 
+        self.set_widgets()
         self.update_plot()
 
     def set_color(self, color: str) -> None:
@@ -355,8 +374,6 @@ class Histogrames(FigureWindow):
         self.widgets["q3"].set(round(q3, 3))
         self.widgets["lower"].set(round(lw, 3))
         self.widgets["upper"].set(round(tw, 3))
-        self.widgets["inf"].set(round(self.lims[0], 3))
-        self.widgets["sup"].set(round(self.lims[1], 3))
 
         self.update_plot()
 
@@ -385,21 +402,15 @@ class Histogrames(FigureWindow):
             Percentil 95%.
 
         """
-        region = self.file.geometry.region
-        mask = self.file.objects.mask[region]
-        data = self.channel.data[region][mask].ravel()
-
-        mean = float(data.mean())
-        std = float(data.std())
+        data = self.data
+        mean = float(np.nanmean(data))
+        std = float(np.nanstd(data))
 
         norm = (data - mean) / std
-        skew = float(0) if std == 0 else float((norm**3).mean())
-        kurt = float(0) if std == 0 else float((norm**4).mean())
+        skew = float(0) if std == 0 else float(np.nanmean(norm**3))
+        kurt = float(0) if std == 0 else float(np.nanmean(norm**4))
 
-        lw, q1, q2, q3, tw = map(float, np.percentile(data, [5, 25, 50, 75, 95]))
-
-        self.lims = [float(np.percentile(data, 0.5)), float(np.percentile(data, 99.5))]
-        self._data = data
+        lw, q1, q2, q3, tw = map(float, np.nanpercentile(data, [5, 25, 50, 75, 95]))
 
         return mean, std, skew, kurt, lw, q1, q2, q3, tw
 
@@ -513,7 +524,7 @@ class DirectionMean(FigureWindow):
         self._direction: bool = True
         self._units: bool = True
         self._freq: float = 0.5
-        super().__init__(gestor, "Mostrar mitjana direccional", dim=(6, 4))
+        super().__init__(gestor, "Mostrar mitjana direccional", dim=(8, 4))
 
         self.plot, = self.axis.plot([], [], color="blue")
         self.axis.set_xlabel(r"Length ($\mu$m)")
