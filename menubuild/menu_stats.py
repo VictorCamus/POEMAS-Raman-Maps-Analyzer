@@ -67,6 +67,7 @@ class HistogramesWidgets(MapWidgets):
     q2: Widget[float]
     q3: Widget[float]
     upper: Widget[float]
+    copy: Widget[str]
     save: Widget[str]
 
 
@@ -89,6 +90,7 @@ class Histogrames(FigureWindow):
         self.mode: Literal["Hist", "Box"] = "Hist"
         self.color: str = "blue"
         self.nbins: int = 50
+        self.hist_data: tuple[NDArray[np.float32], NDArray[np.float32]] = (np.array([]), np.array([]))
 
         super().__init__(gestor, "Mostrar histogrames", dim=(5, 4))
 
@@ -262,11 +264,19 @@ class Histogrames(FigureWindow):
                 setter=self,
                 mode="attr",
             ),
+            "copy": Widget(
+                key="copy",
+                init="Copiar dades",
+                widget="button",
+                widget_kwargs={"width": 14},
+                setter=lambda: self.copy_data(*self.hist_data),
+            ),
             "save": Widget(
                 key="save",
                 init="Guardar",
                 widget="button",
-                setter=self.save_stats),
+                widget_kwargs={"width": 14},
+                setter=self.save_hist),
         }
 
     def set_file(self, file_key: str) -> None:
@@ -457,7 +467,7 @@ class Histogrames(FigureWindow):
         self.figure.tight_layout()
         self.figure.canvas.draw_idle()
 
-    def save_stats(self) -> None:
+    def save_hist(self) -> None:
         """Guarda el gràfic, les dades i l'estadística derivada.
 
         Raises
@@ -504,6 +514,7 @@ class DirectionWidgets(MapWidgets):
     direction: Widget[bool]
     units: Widget[bool]
     freq: Widget[float]
+    copy: Widget[str]
     save: Widget[str]
 
 
@@ -524,6 +535,9 @@ class DirectionMean(FigureWindow):
         self._direction: bool = True
         self._units: bool = True
         self._freq: float = 0.5
+        self.xval: NDArray[np.float32] = np.array([])
+        self.mean: NDArray[np.float32] = np.array([])
+
         super().__init__(gestor, "Mostrar mitjana direccional", dim=(8, 4))
 
         self.plot, = self.axis.plot([], [], color="blue")
@@ -607,10 +621,18 @@ class DirectionMean(FigureWindow):
                 widget_kwargs={"state": "readonly"},
                 setter=self.freq,
             ),
+            "copy": Widget(
+                key="copy",
+                init="Copiar dades",
+                widget="button",
+                widget_kwargs={"width": 14},
+                setter=lambda: self.copy_data(self.xval, self.mean),
+            ),
             "save": Widget(
                 key="save",
                 init="Guardar",
                 widget="button",
+                widget_kwargs={"width": 14},
                 setter=self.save_mean,
             ),
         }

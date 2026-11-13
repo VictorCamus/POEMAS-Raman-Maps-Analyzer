@@ -1,9 +1,11 @@
 """Classes base de les finestres flotants creades."""
-
 from abc import ABC, abstractmethod
+from io import StringIO
 from tkinter import Toplevel
 from tkinter.ttk import Frame
 from typing import TYPE_CHECKING
+
+import numpy as np
 
 from drawing import mapdraw
 from drawing.plots import base_plot, create_canvas
@@ -12,7 +14,6 @@ from window.mixin import MapMixin, SpecMixin
 from window.widgets import Widget
 
 if TYPE_CHECKING:
-    import numpy as np
     from matplotlib.figure import Figure
     from numpy.typing import NDArray
 
@@ -300,3 +301,19 @@ class FigureWindow(MapWindow):
     def masked_data(self) -> NDArray[np.float32]:
         """Retorna les dades d'un canal filtrades amb la màscara booleana actual."""
         return self.channel.data[self.file.objects.mask]
+
+    def copy_data(self, xdata: NDArray[np.float32], ydata: NDArray[np.float32]) -> None:
+        """Copia les dades de la mitjana al porta-retalls.
+
+        xdata: NDArray[np.float32]
+            Dades de l'eix X
+        ydata: NDArray[np.float32]
+            Dades de l'eix Y
+
+        """
+        buffer = StringIO()
+        np.savetxt(buffer, np.column_stack((xdata, ydata)), fmt="%.4f", delimiter="\t")
+
+        self.main_frame.clipboard_clear()
+        self.main_frame.clipboard_append(buffer.getvalue())
+        self.main_frame.update()
