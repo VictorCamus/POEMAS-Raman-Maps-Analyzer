@@ -1,6 +1,5 @@
 """Arxiu que conté les classes que emmagatzemen les dades de cada fitxer, amb les corresponents subclasses."""
 
-import pathlib
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
@@ -139,13 +138,8 @@ class SpecData:
             self.lims = [round(float(min(self.x)), 3), round(float(max(self.x)), 3)]
 
         if self.ccd.size == 0:
-            with pathlib.Path("process/CCD.csv").open(encoding="utf-8") as f:
-                data = np.loadtxt(
-                    (line.replace(",", ".") for line in f),
-                    delimiter=" ",
-                    usecols=(0, 1),
-                    dtype=np.float32,
-                )
+            file = "process/CCD.csv"
+            data = np.loadtxt(file, delimiter="\t", usecols=(0, 1), dtype=np.float32)
 
             left = data[0, 1]
             right = data[-1, 1]
