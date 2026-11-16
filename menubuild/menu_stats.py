@@ -538,7 +538,7 @@ class DirectionMean(FigureWindow):
         self.xval: NDArray[np.float32] = np.array([])
         self.mean: NDArray[np.float32] = np.array([])
 
-        super().__init__(gestor, "Mostrar mitjana direccional", dim=(8, 4))
+        super().__init__(gestor, "Mostrar mitjana direccional", dim=(6, 4))
 
         self.plot, = self.axis.plot([], [], color="blue")
         self.axis.set_xlabel(r"Length ($\mu$m)")

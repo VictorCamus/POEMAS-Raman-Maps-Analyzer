@@ -1,14 +1,16 @@
 """Classe base per a gestionar les accions comunes de l'aplicació."""
 from abc import ABC, abstractmethod
 from functools import partial
-from tkinter import Menu, messagebox
-from typing import TYPE_CHECKING
+from tkinter import Event, Menu, TclError, messagebox
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from classes.protocols import GestorProtocol
     from classes.views import FileView
     from POEMAS import Aplicacio as App
+    from window.builder import BaseWindow
 
 
 class BaseMenu(ABC):
@@ -26,6 +28,8 @@ class BaseMenu(ABC):
         self.files = app.files
         self.root = app.root
         self.notebook = app.notebook
+
+        self._windows: dict[type[BaseWindow], BaseWindow] = {}
 
         self.get_file = app.get_file
         self.set_file = app.set_file
@@ -139,3 +143,45 @@ class BaseMenu(ABC):
             return None
 
         return command()
+
+    def open_window[W: BaseWindow](self, window_type: type[W]) -> W:
+        """Obri una finestra o recupera la instància existent.
+
+        Parameters
+        ----------
+        window_type: type[W]
+            Classe de la finestra que es vol obrir
+
+        Returns
+        -------
+        window: W
+            Instància de la finestra oberta
+
+        """
+        existing = self._windows.get(window_type)
+
+        if existing is not None:
+            try:
+                if existing.window.winfo_exists():
+                    existing.window.deiconify()
+                    existing.window.lift()
+                    existing.window.focus_force()
+
+                    return cast("W", existing)
+            except TclError:
+                pass
+
+            self._windows.pop(window_type, None)
+
+        constructor = cast("Callable[[GestorProtocol], W]", window_type)
+        instance = constructor(self)
+
+        self._windows[window_type] = instance
+
+        def forget(event: Event) -> None:
+            if (event.widget is instance.window and self._windows.get(window_type) is instance):
+                self._windows.pop(window_type, None)
+
+        instance.window.bind("<Destroy>", forget, add="+")
+
+        return instance

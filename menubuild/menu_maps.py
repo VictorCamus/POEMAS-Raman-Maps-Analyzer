@@ -30,11 +30,11 @@ class GestorMaps(BaseMenu):
 
     def _add_menu(self, menu: Menu) -> None:
         self.add_tab(text="Sincronitzar límits", func=self.lims_sync)
-        self.add_tab(text="Afegir llindar", func=partial(Llindar, self))
-        self.add_tab(text="Operar amb canals", func=partial(OperarMaps, self))
-        self.add_tab(text="Ajustar mapes desplaçats", func=partial(ShiftMaps, self))
+        self.add_tab(text="Afegir llindar", func=partial(self.open_window, Llindar))
+        self.add_tab(text="Operar amb canals", func=partial(self.open_window, OperarMaps))
+        self.add_tab(text="Ajustar mapes desplaçats", func=partial(self.open_window, ShiftMaps))
         self.add_tab()
-        self.add_tab(text="Tancar canals", func=partial(TancarMaps, self))
+        self.add_tab(text="Tancar canals", func=partial(self.open_window, TancarMaps))
 
         menu.add_cascade(label="Mapes", menu=self.submenu)
 
@@ -48,6 +48,9 @@ class GestorMaps(BaseMenu):
                     continue
                 if key in f.channel:
                     f.channel[key].lims = deepcopy(channel.lims)
+
+        for f in self.files.values():
+            f.mapview.refresh_map()
 
 
 class LlindarWidgets(MapWidgets):
