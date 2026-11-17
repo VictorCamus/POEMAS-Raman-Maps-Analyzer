@@ -189,6 +189,8 @@ for /f "usebackq delims=" %%i in (`
 set "PYTHON=%VENV_PATH%\Scripts\pythonw.exe"
 set "TARGET=%CD%\POEMAS.py"
 set "SHORTCUT=%DESKTOP%\POEMAS.lnk"
+set "ICON=%CD%\POEMAS.ico"
+
 
 powershell -NoProfile -Command ^
 "$s = New-Object -ComObject WScript.Shell; ^
@@ -196,7 +198,7 @@ powershell -NoProfile -Command ^
  $l.TargetPath = '%PYTHON%'; ^
  $l.Arguments = '\"%TARGET%\"'; ^
  $l.WorkingDirectory = '%CD%'; ^
- $l.IconLocation = '%PYTHON%,0'; ^
+ $l.IconLocation = $env:ICON; ^
  $l.Save()"
 
 if errorlevel 1 (

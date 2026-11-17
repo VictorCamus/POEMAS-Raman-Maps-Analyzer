@@ -1,13 +1,12 @@
 """Classes que controlen els ginys generals dels mapes i els espectres."""
 from typing import TYPE_CHECKING, Protocol, TypedDict, cast, is_typeddict
 
-from typing_extensions import TypeForm
-
 from .widgets import Widget
 
 if TYPE_CHECKING:
     import numpy as np
     from numpy.typing import NDArray
+    from typing_extensions import TypeForm
 
     from classes.data import ChannelData, FitData, PeakData, SpecData
     from classes.protocols import GestorProtocol
