@@ -345,7 +345,7 @@ class PeakDataConfig:
         new_func = DEFAULT_FUNCS[func_key]
         old_params = self.params
 
-        self.params = {name: (old_params[name] if name in old_params else DEFAULT_PARAMS[name])
+        self.params = {name: (replace(old_params[name]) if name in old_params else replace(DEFAULT_PARAMS[name]))
                                                                 for name in new_func.params}
 
         self.function = func_key
